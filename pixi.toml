@@ -1,0 +1,19 @@
+[workspace]
+name = "herdbot"
+version = "0.1.0"
+description = "A Telegram bot that downloads files/torrents and uploads them to Google Drive"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.11"
+aria2 = ">=1.36"
+rclone = ">=1.60"
+python-dotenv = ">=1.0"
+
+[pypi-dependencies]
+python-telegram-bot = ">=21.3"
+
+[tasks]
+start-bot = "python bot.py"
+config-gdrive = "rclone config"
