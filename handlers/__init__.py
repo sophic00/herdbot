@@ -2,6 +2,7 @@ from telethon import events
 
 from handlers.cancel import cancel_handler
 from handlers.mirror import mirror_handler
+from handlers.select import select_callback_handler
 from handlers.start import help_handler, start_handler
 from handlers.stats import stats_handler, status_handler
 
@@ -14,6 +15,9 @@ def register_handlers(client):
     client.add_event_handler(stats_handler, events.NewMessage(pattern=r'^/stats$'))
     client.add_event_handler(status_handler, events.NewMessage(pattern=r'^/status$'))
     client.add_event_handler(cancel_handler, events.NewMessage(pattern=r'^/cancel'))
+    
+    # Callback query handlers (inline keyboard selections)
+    client.add_event_handler(select_callback_handler, events.CallbackQuery)
     
     # Generic message mirror handler
     client.add_event_handler(mirror_handler, events.NewMessage)

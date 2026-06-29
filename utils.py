@@ -4,7 +4,12 @@ import time
 
 from telethon.tl.types import DocumentAttributeFilename
 
+import bencode
 import config
+
+# Selection sessions registry
+# Structure: { job_id: { "files": list, "current_dir": tuple, "dir_map": dict, "id_map": dict, "msg_id": int, ... } }
+selection_sessions = {}
 
 logger = logging.getLogger(__name__)
 
@@ -77,3 +82,41 @@ async def tg_progress_callback(received: int, total: int, status_msg, last_edit_
         f"To cancel, send: `/cancel {job_id}`"
     )
     await edit_message_throttled(status_msg, progress_text, last_edit_state)
+
+def parse_torrent_files(torrent_path: str) -> tuple[str, list[dict]]:
+    """Parse a bencoded torrent file and extract root folder name and file list."""
+    with open(torrent_path, 'rb') as f:
+        data = f.read()
+    
+    torrent = bencode.bdecode(data)
+    if not isinstance(torrent, dict):
+        raise ValueError("Invalid torrent file structure")
+    info = torrent.get('info', {})
+    if not isinstance(info, dict):
+        raise ValueError("Invalid torrent file structure")
+    
+    root_name = info.get('name', b'').decode('utf-8', errors='ignore')
+    
+    files_list = []
+    if 'files' in info:
+        # Multi-file torrent
+        for idx, file_info in enumerate(info['files'], start=1):
+            path_components = [p.decode('utf-8', errors='ignore') for p in file_info.get('path', [])]
+            length = file_info.get('length', 0)
+            files_list.append({
+                "index": idx,
+                "path": path_components,
+                "size": length,
+                "selected": True
+            })
+    else:
+        # Single-file torrent
+        length = info.get('length', 0)
+        files_list.append({
+            "index": 1,
+            "path": [root_name],
+            "size": length,
+            "selected": True
+        })
+        
+    return root_name, files_list

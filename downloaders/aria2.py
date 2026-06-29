@@ -15,7 +15,7 @@ ARIA2_PROGRESS_RE = re.compile(
     r"(?:\s+ETA:(?P<eta>[^\s\]]+))?\]"
 )
 
-async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg, last_edit_state: dict) -> bool:
+async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg, last_edit_state: dict, selected_indexes: list[int] | None = None) -> bool:
     """Run aria2c as a subprocess and stream progress back to Telegram & update active_jobs."""
     os.makedirs(job_dir, exist_ok=True)
     
@@ -26,9 +26,14 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
         "--summary-interval=1",
         "--max-connection-per-server=16",
         "--split=16",
-        "--min-split-size=1M",
-        target
+        "--min-split-size=1M"
     ]
+    
+    if selected_indexes:
+        indexes_str = ",".join(str(idx) for idx in selected_indexes)
+        cmd.append(f"--select-file={indexes_str}")
+        
+    cmd.append(target)
     
     logger.info(f"Starting aria2c download: {cmd}")
     process = await asyncio.create_subprocess_exec(
