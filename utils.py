@@ -51,11 +51,20 @@ def is_authorized(user_id: int) -> bool:
         return True
     return user_id in config.AUTHORIZED_USERS
 
-def get_filename(message) -> str | None:
-    """Safely extract filename from a message's document attributes."""
-    if not message.media or not message.document:
+def get_filename(obj) -> str | None:
+    """Safely extract filename from a message's document attributes or a document object."""
+    if not obj:
         return None
-    for attr in message.document.attributes:
+    
+    if hasattr(obj, 'document'):
+        document = obj.document
+    else:
+        document = obj
+        
+    if not document or not hasattr(document, 'attributes'):
+        return None
+        
+    for attr in document.attributes:
         if isinstance(attr, DocumentAttributeFilename):
             return attr.file_name
     return None
