@@ -65,6 +65,7 @@ The bot will run interactively in your terminal. You can terminate the session u
 - `/help`: Displays input formats and supported protocols.
 - `/status`: Lists all currently running download and upload jobs, showing their progress bars, speeds, and ETAs.
 - `/stats`: Displays host machine resources (disk partition usage, load averages, RAM memory usage).
+- `/cancel <job_id>`: Cancels an active job (either downloading or uploading) and triggers immediate local filesystem cleanup.
 
 ---
 
