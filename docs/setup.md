@@ -26,6 +26,7 @@ Open `.env` and set the following parameters:
 - **`RCLONE_REMOTE_NAME`:** The name of your Rclone remote configuration (default is `gdrive`).
 - **`RCLONE_UPLOAD_DIR`:** Target folder path in your Google Drive where files should be uploaded.
 - **`DOWNLOAD_DIR`:** The temporary local storage directory used for active downloads (default is `./downloads`).
+- **`MAX_CONCURRENT_JOBS`:** The maximum number of parallel downloads/uploads allowed to run at the same time (default: `2`). Any additional jobs will be added to a queue.
 
 ---
 
