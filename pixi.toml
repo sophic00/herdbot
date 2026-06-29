@@ -6,16 +6,16 @@ channels = ["conda-forge"]
 platforms = ["linux-64"]
 
 [dependencies]
-python = ">=3.11"
-aria2 = ">=1.36"
-rclone = ">=1.60"
-python-dotenv = ">=1.0"
-ruff = ">=0.3"
-pyright = ">=1.1"
+python = "==3.14.6"
+aria2 = "==1.37.0"
+rclone = "==1.74.3"
+python-dotenv = "==1.2.2"
+ruff = "==0.15.20"
+pyright = "==1.1.411"
 
 [pypi-dependencies]
-telethon = ">=1.35"
-cryptg = ">=0.4"
+telethon = "==1.44.0"
+cryptg = "==0.6.0"
 
 [tasks]
 start-bot = "python bot.py"
