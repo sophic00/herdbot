@@ -10,22 +10,30 @@ python = "==3.14.6"
 aria2 = "==1.37.0"
 rclone = "==1.74.3"
 python-dotenv = "==1.2.2"
-ruff = "==0.15.20"
-pyright = "==1.1.411"
 
 [pypi-dependencies]
 telethon = "==1.44.0"
 cryptg = "==0.6.0"
 
+[feature.dev.dependencies]
+ruff = "==0.15.20"
+pyright = "==1.1.411"
+
+[environments]
+default = { features = [] }
+dev = { features = ["dev"] }
+
 [tasks]
 start-bot = "python bot.py"
 config-gdrive = "rclone config"
-lint = "ruff check"
-typecheck = "pyright"
-check = { depends-on = ["lint", "typecheck"] }
 docker-build = "docker compose build"
 docker-up = { cmd = "touch bot.session && touch bot.session-journal && docker compose up -d", depends-on = ["docker-build"] }
 docker-down = "docker compose down"
 docker-restart = "docker compose restart"
 docker-logs = "docker compose logs -f"
 docker-update = { cmd = "docker compose pull && touch bot.session && touch bot.session-journal && docker compose up -d --build herdbot" }
+
+[feature.dev.tasks]
+lint = "ruff check"
+typecheck = "pyright"
+check = { depends-on = ["lint", "typecheck"] }
