@@ -15,7 +15,7 @@ RCLONE_PROGRESS_RE = re.compile(
 
 async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_state: dict) -> bool:
     """Upload job folder contents to Google Drive using rclone and update active_jobs."""
-    dest_path = f"{config.RCLONE_REMOTE}:{config.RCLONE_DEST_DIR}/{job_id}"
+    dest_path = f"{config.RCLONE_REMOTE}:{config.RCLONE_DEST_DIR}"
     
     cmd = [
         "rclone",

@@ -226,7 +226,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             await utils.edit_message_throttled(
                 status_msg, 
                 f"✅ *Upload complete!*\n\n"
-                f"📂 Folder: `{config.RCLONE_DEST_DIR}/{job_id}`\n"
+                f"📂 Folder: `{config.RCLONE_DEST_DIR}`\n"
                 f"🧹 Local files cleaned up successfully.",
                 last_edit_state
             )
