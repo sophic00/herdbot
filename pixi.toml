@@ -12,7 +12,8 @@ rclone = ">=1.60"
 python-dotenv = ">=1.0"
 
 [pypi-dependencies]
-python-telegram-bot = ">=21.3"
+telethon = ">=1.35"
+cryptg = ">=0.4"
 
 [tasks]
 start-bot = "python bot.py"

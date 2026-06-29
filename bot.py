@@ -7,14 +7,8 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes,
-)
+from telethon import TelegramClient, events
+from telethon.tl.types import DocumentAttributeFilename
 
 # Load environment variables
 load_dotenv()
@@ -27,7 +21,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
+API_ID = os.getenv("TELEGRAM_API_ID")
+API_HASH = os.getenv("TELEGRAM_API_HASH")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+if API_ID:
+    API_ID = int(API_ID)
+
 RCLONE_REMOTE = os.getenv("RCLONE_REMOTE_NAME", "gdrive")
 RCLONE_DEST_DIR = os.getenv("RCLONE_UPLOAD_DIR", "TelegramBotUploads")
 DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "./downloads")
@@ -47,6 +47,13 @@ ARIA2_PROGRESS_RE = re.compile(
 RCLONE_PROGRESS_RE = re.compile(
     r"Transferred:\s+(?P<uploaded>[\d\.]+\s*\w+)\s+/\s+(?P<total>[\d\.]+\s*\w+),\s+(?P<percent>\d+)%,\s+(?P<speed>[\d\.]+\s*\w+/s),\s+ETA\s+(?P<eta>[^\s]+)"
 )
+
+# Initialize Telethon Client if credentials are provided
+if API_ID and API_HASH and BOT_TOKEN:
+    bot = TelegramClient('bot', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+else:
+    bot = None
+    logger.warning("Telegram credentials not fully set. Please configure .env file.")
 
 def get_authorized_users() -> list[int]:
     """Parse and return list of authorized user IDs."""
@@ -69,7 +76,16 @@ def make_progress_bar(percent: int) -> str:
     empty = 10 - filled
     return "█" * filled + "░" * empty
 
-async def edit_message_throttled(message, text: str, last_edit_state: dict):
+def get_filename(message) -> str:
+    """Safely extract filename from a message's document attributes."""
+    if not message.media or not message.document:
+        return None
+    for attr in message.document.attributes:
+        if isinstance(attr, DocumentAttributeFilename):
+            return attr.file_name
+    return None
+
+async def edit_message_throttled(status_msg, text: str, last_edit_state: dict):
     """Edit a message with rate-limiting to prevent Telegram API rate limits."""
     now = time.time()
     # Edit if 3+ seconds elapsed OR if it's the final update
@@ -77,15 +93,38 @@ async def edit_message_throttled(message, text: str, last_edit_state: dict):
         if last_edit_state.get("text") == text:
             return  # No need to edit if text is identical
         try:
-            await message.edit_text(text, parse_mode="Markdown")
+            await status_msg.edit(text, parse_mode="Markdown")
             last_edit_state["time"] = now
             last_edit_state["text"] = text
         except Exception as e:
             logger.debug(f"Failed to edit message: {e}")
 
+async def tg_progress_callback(received, total, status_msg, last_edit_state):
+    """Progress callback for Telethon media downloads."""
+    if not total:
+        return
+    percent = int(received * 100 / total)
+    bar = make_progress_bar(percent)
+    
+    def format_size(size_bytes):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.1f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.1f} TB"
+    
+    rec_str = format_size(received)
+    tot_str = format_size(total)
+    
+    progress_text = (
+        f"📥 *Downloading file from Telegram...*\n"
+        f"`[{bar}] {percent}%`\n"
+        f"🔸 *Downloaded:* {rec_str} of {tot_str}"
+    )
+    await edit_message_throttled(status_msg, progress_text, last_edit_state)
+
 async def run_aria2_download(target: str, job_dir: str, status_msg, last_edit_state: dict) -> bool:
     """Run aria2c as a subprocess and stream progress back to Telegram."""
-    # Ensure job_dir exists
     os.makedirs(job_dir, exist_ok=True)
     
     cmd = [
@@ -134,7 +173,7 @@ async def run_aria2_download(target: str, job_dir: str, status_msg, last_edit_st
             )
             await edit_message_throttled(status_msg, progress_text, last_edit_state)
             metadata_downloading = False
-        elif "0B/0B" in line or "DL:0B" in line:
+        elif "0B/0B" in line or "DL:0B" in line or "DL:0.00B" in line or "DL:0B/s" in line:
             # Handle metadata downloading phase for torrents/magnets
             if not metadata_downloading:
                 metadata_downloading = True
@@ -147,7 +186,6 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
     """Upload job folder contents to Google Drive using rclone."""
     dest_path = f"{RCLONE_REMOTE}:{RCLONE_DEST_DIR}/{job_id}"
     
-    # Run rclone move
     cmd = [
         "rclone",
         "move",
@@ -192,155 +230,164 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
     await process.wait()
     return process.returncode == 0
 
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Greeting handler."""
-    user = update.effective_user
-    if not is_authorized(user.id):
-        await update.message.reply_text("❌ You are not authorized to use this bot.")
-        return
-        
-    welcome_text = (
-        f"Hi {user.first_name}! 👋\n\n"
-        f"I am a Downloader & Uploader Bot. Send me one of the following:\n"
-        f"1. A direct download link (http/https)\n"
-        f"2. A torrent magnet link (`magnet:...`)\n"
-        f"3. A `.torrent` file\n"
-        f"4. Any other Telegram file (document, video, audio, etc.)\n\n"
-        f"I will download the content to the server, upload it to Google Drive, "
-        f"and delete the local copy automatically."
-    )
-    await update.message.reply_text(welcome_text)
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main message handler for links and files."""
-    user = update.effective_user
-    if not is_authorized(user.id):
-        await update.message.reply_text("❌ You are not authorized to use this bot.")
-        return
-
-    message = update.message
-    job_id = f"{update.effective_chat.id}_{message.message_id}"
-    job_dir = os.path.join(DOWNLOAD_DIR, f"job_{job_id}")
-    
-    target = None
-    is_torrent_file = False
-    
-    # 1. Check if it's a native telegram file
-    if message.document:
-        doc = message.document
-        # Check if it's a .torrent file
-        if doc.file_name.lower().endswith(".torrent"):
-            is_torrent_file = True
-        target = doc
-    elif message.video:
-        target = message.video
-    elif message.audio:
-        target = message.audio
-    elif message.voice:
-        target = message.voice
-    # 2. Check if it's text (link or magnet)
-    elif message.text:
-        text = message.text.strip()
-        if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
-            target = text
-            
-    if not target:
-        await update.message.reply_text("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
-        return
-
-    # Create job directory
-    os.makedirs(job_dir, exist_ok=True)
-    
-    # Send status message
-    status_msg = await update.message.reply_text("⏳ *Initializing job...*", parse_mode="Markdown")
-    last_edit_state = {"time": time.time(), "text": ""}
-    
-    try:
-        # Download phase
-        if isinstance(target, str):
-            # Direct link or magnet link
-            success = await run_aria2_download(target, job_dir, status_msg, last_edit_state)
-        elif is_torrent_file:
-            # Download torrent file first to a temp path
-            await edit_message_throttled(status_msg, "⏳ *Downloading .torrent file from Telegram...*", last_edit_state)
-            tg_file = await context.bot.get_file(target.file_id)
-            temp_torrent = os.path.join(DOWNLOAD_DIR, f"temp_{job_id}.torrent")
-            await tg_file.download_to_drive(temp_torrent)
-            
-            # Start aria2 with downloaded torrent file
-            success = await run_aria2_download(temp_torrent, job_dir, status_msg, last_edit_state)
-            
-            # Cleanup temp torrent file
-            if os.path.exists(temp_torrent):
-                os.remove(temp_torrent)
-        else:
-            # Generic Telegram file
-            await edit_message_throttled(status_msg, "⏳ *Downloading file from Telegram...*", last_edit_state)
-            tg_file = await context.bot.get_file(target.file_id)
-            
-            # Use original file name if document, else fallback
-            file_name = getattr(target, "file_name", None) or f"tg_file_{job_id}"
-            local_path = os.path.join(job_dir, file_name)
-            await tg_file.download_to_drive(local_path)
-            success = True
-            
-        if not success:
-            await edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
-            shutil.rmtree(job_dir, ignore_errors=True)
+if bot:
+    @bot.on(events.NewMessage)
+    async def handle_message(event):
+        """Main message handler for links and files."""
+        user = await event.get_sender()
+        if not user:
             return
             
-        # Check if downloaded anything
-        downloaded_contents = os.listdir(job_dir)
-        if not downloaded_contents:
-            await edit_message_throttled(status_msg, "❌ *Download completed, but no files found.*", last_edit_state)
-            shutil.rmtree(job_dir, ignore_errors=True)
+        if not is_authorized(user.id):
+            await event.respond("❌ You are not authorized to use this bot.")
             return
-            
-        # Upload phase
-        await edit_message_throttled(status_msg, "⏳ *Preparing to upload to Google Drive...*", last_edit_state)
-        upload_success = await run_rclone_upload(job_dir, job_id, status_msg, last_edit_state)
+
+        message = event.message
         
-        if upload_success:
-            await edit_message_throttled(
-                status_msg, 
-                f"✅ *Upload complete!*\n\n"
-                f"📂 Folder: `{RCLONE_DEST_DIR}/{job_id}`\n"
-                f"🧹 Local files cleaned up successfully.",
-                last_edit_state
+        # 1. Handle `/start` Command
+        if message.text and message.text.strip().startswith("/start"):
+            welcome_text = (
+                f"Hi {user.first_name or 'there'}! 👋\n\n"
+                f"I am a Downloader & Uploader Bot. Send me one of the following:\n"
+                f"1. A direct download link (http/https)\n"
+                f"2. A torrent magnet link (`magnet:...`)\n"
+                f"3. A `.torrent` file\n"
+                f"4. Any other Telegram file (document, video, audio, etc.)\n\n"
+                f"I will download the content to the server, upload it to Google Drive, "
+                f"and delete the local copy automatically."
             )
-        else:
-            await edit_message_throttled(status_msg, "❌ *Upload to Google Drive failed.*", last_edit_state)
-            
-    except Exception as e:
-        logger.error(f"Error handling job {job_id}: {e}", exc_info=True)
+            await event.respond(welcome_text)
+            return
+
+        # 2. Determine target of job
+        job_id = f"{event.chat_id}_{message.id}"
+        job_dir = os.path.join(DOWNLOAD_DIR, f"job_{job_id}")
+        
+        target = None
+        is_torrent_file = False
+        filename = get_filename(message)
+        
+        if message.document:
+            if filename and filename.lower().endswith(".torrent"):
+                is_torrent_file = True
+            target = message.document
+        elif message.video:
+            target = message.video
+        elif message.audio:
+            target = message.audio
+        elif message.voice:
+            target = message.voice
+        elif message.text:
+            text = message.text.strip()
+            if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
+                target = text
+                
+        if not target:
+            # Silent ignore or friendly error if it's text that's not a link
+            if message.text and not message.text.startswith("/"):
+                await event.respond("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
+            return
+
+        # Create job directory
+        os.makedirs(job_dir, exist_ok=True)
+        
+        # Send status message
+        status_msg = await event.respond("⏳ *Initializing job...*")
+        
+        # We initialize `time` to 0 so the first edit is never throttled
+        last_edit_state = {"time": 0, "text": ""}
+        
         try:
-            await edit_message_throttled(status_msg, f"❌ *An error occurred:* `{str(e)}`", last_edit_state)
-        except Exception:
-            pass
-    finally:
-        # Guarantee cleanup of local files
-        if os.path.exists(job_dir):
-            shutil.rmtree(job_dir, ignore_errors=True)
+            # Download phase
+            # Ensure the first download edit is forced
+            last_edit_state["time"] = 0
+            
+            if isinstance(target, str):
+                # Direct link or magnet link
+                success = await run_aria2_download(target, job_dir, status_msg, last_edit_state)
+            elif is_torrent_file:
+                # Download torrent file first to a temp path
+                await edit_message_throttled(status_msg, "⏳ *Downloading .torrent file from Telegram...*", last_edit_state)
+                temp_torrent = os.path.join(DOWNLOAD_DIR, f"temp_{job_id}.torrent")
+                
+                # Download using telethon progress callback
+                last_edit_state["time"] = 0
+                await event.client.download_media(
+                    target,
+                    file=temp_torrent,
+                    progress_callback=lambda r, t: tg_progress_callback(r, t, status_msg, last_edit_state)
+                )
+                
+                # Start aria2 with downloaded torrent file
+                last_edit_state["time"] = 0
+                success = await run_aria2_download(temp_torrent, job_dir, status_msg, last_edit_state)
+                
+                # Cleanup temp torrent file
+                if os.path.exists(temp_torrent):
+                    os.remove(temp_torrent)
+            else:
+                # Generic Telegram file
+                # Use original file name if available, else fallback
+                file_name = filename or f"tg_file_{job_id}"
+                local_path = os.path.join(job_dir, file_name)
+                
+                # Download using telethon progress callback
+                last_edit_state["time"] = 0
+                await event.client.download_media(
+                    target,
+                    file=local_path,
+                    progress_callback=lambda r, t: tg_progress_callback(r, t, status_msg, last_edit_state)
+                )
+                success = True
+                
+            if not success:
+                await edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
+                shutil.rmtree(job_dir, ignore_errors=True)
+                return
+                
+            # Check if downloaded anything
+            downloaded_contents = os.listdir(job_dir)
+            if not downloaded_contents:
+                await edit_message_throttled(status_msg, "❌ *Download completed, but no files found.*", last_edit_state)
+                shutil.rmtree(job_dir, ignore_errors=True)
+                return
+                
+            # Upload phase
+            # Ensure the first upload edit is forced
+            last_edit_state["time"] = 0
+            await edit_message_throttled(status_msg, "⏳ *Preparing to upload to Google Drive...*", last_edit_state)
+            
+            upload_success = await run_rclone_upload(job_dir, job_id, status_msg, last_edit_state)
+            
+            if upload_success:
+                await edit_message_throttled(
+                    status_msg, 
+                    f"✅ *Upload complete!*\n\n"
+                    f"📂 Folder: `{RCLONE_DEST_DIR}/{job_id}`\n"
+                    f"🧹 Local files cleaned up successfully.",
+                    last_edit_state
+                )
+            else:
+                await edit_message_throttled(status_msg, "❌ *Upload to Google Drive failed.*", last_edit_state)
+                
+        except Exception as e:
+            logger.error(f"Error handling job {job_id}: {e}", exc_info=True)
+            try:
+                await edit_message_throttled(status_msg, f"❌ *An error occurred:* `{str(e)}`", last_edit_state)
+            except Exception:
+                pass
+        finally:
+            # Guarantee cleanup of local files
+            if os.path.exists(job_dir):
+                shutil.rmtree(job_dir, ignore_errors=True)
 
 def main():
     """Start the bot."""
-    if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN environment variable not set.")
+    if not bot:
+        logger.error("Bot client is not initialized due to missing credentials.")
         return
-        
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Command handlers
-    application.add_handler(CommandHandler("start", start_command))
-    
-    # Message handlers
-    application.add_handler(MessageHandler(
-        filters.Document.ALL | filters.VIDEO | filters.AUDIO | filters.VOICE | filters.TEXT,
-        handle_message
-    ))
-    
-    logger.info("Bot is starting polling...")
-    application.run_polling()
+    logger.info("Bot is starting polling/listening...")
+    bot.run_until_disconnected()
 
 if __name__ == "__main__":
     main()
