@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import re
@@ -83,7 +84,7 @@ async def mirror_handler(event):
 
     # Create job directory
     os.makedirs(job_dir, exist_ok=True)
-    status_msg = await event.respond("⏳ *Initializing job...*")
+    status_msg = await event.respond(f"⏳ *Initializing job...*\n\nTo cancel, send: `/cancel {job_id}`")
     last_edit_state = {"time": 0, "text": ""}
     
     try:
@@ -95,7 +96,7 @@ async def mirror_handler(event):
             success = await run_aria2_download(target, job_dir, job_id, status_msg, last_edit_state)
         elif is_torrent_file:
             # Download torrent file first to a temp path
-            await utils.edit_message_throttled(status_msg, "⏳ *Downloading .torrent file from Telegram...*", last_edit_state)
+            await utils.edit_message_throttled(status_msg, f"⏳ *Downloading .torrent file from Telegram...*\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
             temp_torrent = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.torrent")
             
             # Download using telethon progress callback
@@ -106,7 +107,7 @@ async def mirror_handler(event):
             await event.client.download_media(
                 target,
                 file=temp_torrent,
-                progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state)
+                progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
             )
             
             # Start aria2 with downloaded torrent file
@@ -128,12 +129,15 @@ async def mirror_handler(event):
             await event.client.download_media(
                 target,
                 file=local_path,
-                progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state)
+                progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
             )
             success = True
             
         if not success:
-            await utils.edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
+            if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
+                await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+            else:
+                await utils.edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
             shutil.rmtree(job_dir, ignore_errors=True)
             return
             
@@ -146,7 +150,7 @@ async def mirror_handler(event):
             
         # Upload phase
         last_edit_state["time"] = 0
-        await utils.edit_message_throttled(status_msg, "⏳ *Preparing to upload to Google Drive...*", last_edit_state)
+        await utils.edit_message_throttled(status_msg, f"⏳ *Preparing to upload to Google Drive...*\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
         
         upload_success = await run_rclone_upload(job_dir, job_id, status_msg, last_edit_state)
         
@@ -159,8 +163,17 @@ async def mirror_handler(event):
                 last_edit_state
             )
         else:
-            await utils.edit_message_throttled(status_msg, "❌ *Upload to Google Drive failed.*", last_edit_state)
+            if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
+                await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+            else:
+                await utils.edit_message_throttled(status_msg, "❌ *Upload to Google Drive failed.*", last_edit_state)
             
+    except asyncio.CancelledError:
+        logger.info(f"Job {job_id} was cancelled by user.")
+        try:
+            await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+        except Exception:
+            pass
     except Exception as e:
         logger.error(f"Error handling job {job_id}: {e}", exc_info=True)
         try:

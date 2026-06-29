@@ -34,7 +34,9 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
         stderr=asyncio.subprocess.STDOUT
     )
     
+    # Store process handle and initialize phase
     if job_id in utils.active_jobs:
+        utils.active_jobs[job_id]["process"] = process
         utils.active_jobs[job_id]["phase"] = "Uploading"
         
     assert process.stdout is not None
@@ -67,7 +69,8 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
                 f"📤 *Uploading to Google Drive...*\n"
                 f"`[{bar}] {percent}%`\n"
                 f"🔸 *Uploaded:* {uploaded} of {total}\n"
-                f"🔸 *Speed:* {speed} | *ETA:* {eta}"
+                f"🔸 *Speed:* {speed} | *ETA:* {eta}\n\n"
+                f"To cancel, send: `/cancel {job_id}`"
             )
             await utils.edit_message_throttled(status_msg, progress_text, last_edit_state)
             

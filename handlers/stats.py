@@ -92,10 +92,12 @@ async def status_handler(event):
         bar = utils.make_progress_bar(percent)
         text += (
             f"📂 *Name:* `{job.get('name')}`\n"
+            f"🆔 *Job ID:* `{job_id}`\n"
             f"👤 *Started By:* {job.get('user')}\n"
             f"⚡ *Phase:* `{job.get('phase', 'Initializing')}`\n"
             f"`[{bar}] {percent}%`\n"
             f"🚀 *Speed:* `{job.get('speed', '0 B/s')}` | *ETA:* `{job.get('eta', 'N/A')}`\n"
+            f"To cancel, send: `/cancel {job_id}`\n"
             f"─────────────────\n\n"
         )
         

@@ -39,8 +39,9 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
     
     metadata_downloading = False
     
-    # Initialize active job structure if it exists
+    # Store process handle and initialize phase
     if job_id in utils.active_jobs:
+        utils.active_jobs[job_id]["process"] = process
         utils.active_jobs[job_id]["phase"] = "Downloading"
         
     assert process.stdout is not None
@@ -75,7 +76,8 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
                 f"📥 *Downloading...*\n"
                 f"`[{bar}] {percent}%`\n"
                 f"🔸 *Downloaded:* {downloaded} of {total}\n"
-                f"🔸 *Speed:* {speed}/s | *ETA:* {eta}"
+                f"🔸 *Speed:* {speed}/s | *ETA:* {eta}\n\n"
+                f"To cancel, send: `/cancel {job_id}`"
             )
             await utils.edit_message_throttled(status_msg, progress_text, last_edit_state)
             metadata_downloading = False
@@ -90,7 +92,11 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
                         "eta": "N/A",
                         "phase": "Downloading Metadata"
                     })
-                await utils.edit_message_throttled(status_msg, "📥 *Connecting to peers / downloading metadata...*", last_edit_state)
+                await utils.edit_message_throttled(
+                    status_msg, 
+                    f"📥 *Connecting to peers / downloading metadata...*\n\nTo cancel, send: `/cancel {job_id}`", 
+                    last_edit_state
+                )
                 
     await process.wait()
     return process.returncode == 0

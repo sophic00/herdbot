@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -54,10 +55,15 @@ def get_filename(message) -> str | None:
             return attr.file_name
     return None
 
-async def tg_progress_callback(received: int, total: int, status_msg, last_edit_state: dict):
-    """Progress callback for Telethon media downloads."""
+async def tg_progress_callback(received: int, total: int, status_msg, last_edit_state: dict, job_id: str):
+    """Progress callback for Telethon media downloads with cancellation support."""
     if not total:
         return
+        
+    # Check if job was cancelled
+    if job_id in active_jobs and active_jobs[job_id].get("cancelled"):
+        raise asyncio.CancelledError("Download cancelled by user")
+        
     percent = int(received * 100 / total)
     bar = make_progress_bar(percent)
     
@@ -67,6 +73,7 @@ async def tg_progress_callback(received: int, total: int, status_msg, last_edit_
     progress_text = (
         f"📥 *Downloading file from Telegram...*\n"
         f"`[{bar}] {percent}%`\n"
-        f"🔸 *Downloaded:* {rec_str} of {tot_str}"
+        f"🔸 *Downloaded:* {rec_str} of {tot_str}\n\n"
+        f"To cancel, send: `/cancel {job_id}`"
     )
     await edit_message_throttled(status_msg, progress_text, last_edit_state)
