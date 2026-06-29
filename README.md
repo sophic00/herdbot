@@ -14,6 +14,35 @@ By utilizing **Telethon** and the **Telegram MTProto API**, HerdBot runs with hi
 - **No Seeding:** For torrents, it stops seeding immediately after the download completes.
 - **Visual Progress Bars:** Shows real-time speed, ETA, and progress bars on Telegram for both downloading and uploading phases, as well as Telegram native file downloads.
 - **Access Control:** Whitelist specific Telegram User IDs to prevent unauthorized usage of your bot.
+- **Job Status Tracking:** View currently active jobs and server health metrics in real-time.
+
+---
+
+## Folder Structure
+The project is structured modularly for easy customization and extensibility:
+```text
+herdbot/
+├── bot.py                # Bot entry point
+├── config.py             # Config loader and validation
+├── utils.py              # Helper utilities and active jobs state registry
+├── pixi.toml             # Pixi package manager config
+├── downloaders/
+│   ├── aria2.py          # Handles aria2c subprocess downloading
+│   └── rclone.py         # Handles rclone subprocess uploading
+└── handlers/
+    ├── __init__.py       # Handler registration router
+    ├── start.py          # /start and /help commands
+    ├── stats.py          # /stats and /status commands
+    └── mirror.py         # Main link & file uploader handler
+```
+
+---
+
+## Bot Commands
+- `/start` - Start the bot, greet the user, and show available commands.
+- `/help` - Show detailed usage instructions.
+- `/status` - Check the live status of all active download and upload jobs, including speed, ETA, and progress bars.
+- `/stats` - View server metrics: disk space on the download volume, CPU load average, and active memory (RAM) usage.
 
 ---
 
