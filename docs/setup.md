@@ -65,3 +65,32 @@ The bot will run interactively in your terminal. You can terminate the session u
 - `/help`: Displays input formats and supported protocols.
 - `/status`: Lists all currently running download and upload jobs, showing their progress bars, speeds, and ETAs.
 - `/stats`: Displays host machine resources (disk partition usage, load averages, RAM memory usage).
+
+---
+
+## Development & Code Quality
+
+Before committing changes, ensure that you run the lint and typecheck suites.
+
+### Run Linting
+To check for code formatting and import issues (using Ruff):
+```bash
+pixi run lint
+```
+To automatically fix format and import sorting:
+```bash
+pixi run ruff check --fix
+```
+
+### Run Typechecking
+To verify types and ensure Python static compliance (using Pyright):
+```bash
+pixi run typecheck
+```
+
+### Run All Checks
+To run all tests and quality verification tasks concurrently:
+```bash
+pixi run check
+```
+If this command exits with `exit code 0`, the codebase is compliant and ready to commit.
