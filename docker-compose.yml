@@ -9,6 +9,6 @@ services:
       # Persist Telegram session folder
       - ./session:/app/session
       # Persist rclone remote configurations
-      - ./config/rclone:/root/.config/rclone
+      - ~/.config/rclone:/root/.config/rclone
       # Map temporary download directory
       - ./downloads:/app/downloads
