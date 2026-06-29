@@ -11,6 +11,10 @@ import config
 # Structure: { job_id: { "files": list, "current_dir": tuple, "dir_map": dict, "id_map": dict, "msg_id": int, ... } }
 selection_sessions = {}
 
+# Queue registry for concurrency control
+# List of dicts representing job execution contexts
+job_queue = []
+
 logger = logging.getLogger(__name__)
 
 # Shared Global Jobs registry
@@ -129,3 +133,7 @@ def parse_torrent_files(torrent_path: str) -> tuple[str, list[dict]]:
         })
         
     return root_name, files_list
+
+def get_running_jobs_count() -> int:
+    """Returns the number of active jobs currently running (not in 'Queued' phase)."""
+    return sum(1 for j in active_jobs.values() if j.get("phase") != "Queued")

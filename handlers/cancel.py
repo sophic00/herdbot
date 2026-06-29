@@ -25,11 +25,33 @@ async def cancel_handler(event):
         await event.respond(f"❌ Job `{job_id}` not found or already completed.")
         return
 
-    # Mark as cancelled
     job = utils.active_jobs[job_id]
     job["cancelled"] = True
     
-    # Terminate process if running
+    # Handle queued job cancellation
+    if job.get("phase") == "Queued":
+        # Remove from queue list
+        utils.job_queue = [q for q in utils.job_queue if f"{q['chat_id']}_{q['message_id']}" != job_id]
+        
+        # Update status message if available
+        status_msg = job.get("status_msg")
+        if status_msg:
+            try:
+                await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* (Removed from queue)", {"time": 0, "text": ""})
+            except Exception:
+                pass
+                
+        # Remove from active registry
+        utils.active_jobs.pop(job_id, None)
+        
+        # Recalculate and update the remaining queue positions
+        from handlers.mirror import process_next_in_queue
+        await process_next_in_queue(event.client)
+        
+        await event.respond(f"✅ Queued job `{job_id}` has been cancelled and removed from the queue.")
+        return
+    
+    # Terminate process if running (active download/upload)
     process = job.get("process")
     if process:
         try:

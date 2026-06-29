@@ -82,23 +82,43 @@ async def status_handler(event):
         await event.respond("❌ You are not authorized to use this bot.")
         return
 
-    if not utils.active_jobs:
-        await event.respond("ℹ️ *No active download or upload tasks running.*", parse_mode="markdown")
+    running_jobs = {k: v for k, v in utils.active_jobs.items() if v.get("phase") != "Queued"}
+    queued_jobs = {k: v for k, v in utils.active_jobs.items() if v.get("phase") == "Queued"}
+
+    if not running_jobs and not queued_jobs:
+        await event.respond("ℹ️ *No active or queued tasks running.*", parse_mode="markdown")
         return
 
-    text = "⏳ *Active Downloader Jobs:*\n\n"
-    for job_id, job in utils.active_jobs.items():
-        percent = job.get("percent", 0)
-        bar = utils.make_progress_bar(percent)
-        text += (
-            f"📂 *Name:* `{job.get('name')}`\n"
-            f"🆔 *Job ID:* `{job_id}`\n"
-            f"👤 *Started By:* {job.get('user')}\n"
-            f"⚡ *Phase:* `{job.get('phase', 'Initializing')}`\n"
-            f"`[{bar}] {percent}%`\n"
-            f"🚀 *Speed:* `{job.get('speed', '0 B/s')}` | *ETA:* `{job.get('eta', 'N/A')}`\n"
-            f"To cancel, send: `/cancel {job_id}`\n"
-            f"─────────────────\n\n"
-        )
+    text = ""
+    if running_jobs:
+        text += "⏳ *Active Downloader Jobs:*\n\n"
+        for job_id, job in running_jobs.items():
+            percent = job.get("percent", 0)
+            bar = utils.make_progress_bar(percent)
+            text += (
+                f"📂 *Name:* `{job.get('name')}`\n"
+                f"🆔 *Job ID:* `{job_id}`\n"
+                f"👤 *Started By:* {job.get('user')}\n"
+                f"⚡ *Phase:* `{job.get('phase', 'Initializing')}`\n"
+                f"`[{bar}] {percent}%`\n"
+                f"🚀 *Speed:* `{job.get('speed', '0 B/s')}` | *ETA:* `{job.get('eta', 'N/A')}`\n"
+                f"To cancel, send: `/cancel {job_id}`\n"
+                f"─────────────────\n\n"
+            )
+            
+    if queued_jobs:
+        text += "💤 *Queued Jobs:*\n\n"
+        for idx, q_job in enumerate(utils.job_queue, start=1):
+            q_id = f"{q_job['chat_id']}_{q_job['message_id']}"
+            if q_id in queued_jobs:
+                job = queued_jobs[q_id]
+                text += (
+                    f"📂 *Name:* `{job.get('name')}`\n"
+                    f"🆔 *Job ID:* `{q_id}`\n"
+                    f"👤 *Started By:* {job.get('user')}\n"
+                    f"🔢 *Queue Position:* `#{idx}`\n"
+                    f"To cancel, send: `/cancel {q_id}`\n"
+                    f"─────────────────\n\n"
+                )
         
     await event.respond(text, parse_mode="markdown")

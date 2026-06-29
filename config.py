@@ -41,3 +41,6 @@ def get_authorized_users() -> list[int]:
     return [int(u.strip()) for u in users_raw.split(",") if u.strip().isdigit()]
 
 AUTHORIZED_USERS = get_authorized_users()
+
+# Concurrency limits
+MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
