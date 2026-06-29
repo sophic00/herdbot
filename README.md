@@ -1,102 +1,33 @@
-# HerdBot 🤖
-HerdBot is a Telegram Bot designed to download files and torrents on a local server, upload them to Google Drive, and then cleanly delete them from the local server.
+# HerdBot
 
-By utilizing **Telethon** and the **Telegram MTProto API**, HerdBot runs with high API limits and supports downloading large Telegram files (up to 2GB).
+HerdBot is a modular Telegram downloader and uploader bot. It automates downloading files, direct URLs, magnet links, and torrent files to a local server, uploading them recursively to Google Drive, and cleaning up the local filesystem storage after successful transfers.
 
-## Features
-- **Accepts Multiple Formats:**
-  1. Telegram files (Documents, Videos, Audio, Voice notes, etc.)
-  2. Direct download links (`http://` or `https://`)
-  3. `.torrent` files
-  4. Magnet links (`magnet:?xt=urn:...`)
-- **Seamless Uploads:** Uploads files and folders directly to your Google Drive while keeping the directory structure intact for torrents.
-- **Clean Execution:** Automatically deletes local copies after successful upload.
-- **No Seeding:** For torrents, it stops seeding immediately after the download completes.
-- **Visual Progress Bars:** Shows real-time speed, ETA, and progress bars on Telegram for both downloading and uploading phases, as well as Telegram native file downloads.
-- **Access Control:** Whitelist specific Telegram User IDs to prevent unauthorized usage of your bot.
-- **Job Status Tracking:** View currently active jobs and server health metrics in real-time.
+## Key Features
 
----
+- **Protocols Supported:** Direct links (HTTP/HTTPS), Torrent files, Magnet links, and Telegram native media.
+- **Large File Handling:** Utilizes Telethon (MTProto API) and `cryptg` to support downloading native Telegram files up to 2GB.
+- **Robust Uploads:** Integrates with `rclone` to support chunked, multi-threaded uploads while preserving directory structures for multi-file torrents.
+- **Auto-Cleanup:** Guarantees deletion of temporary files from local storage upon successful upload.
+- **Queue & Metrics:** Includes `/status` to track active transfer statistics (speed, ETA, progress bars) and `/stats` for host server performance tracking.
+- **Access Control:** Restricts usage to whitelisted Telegram User IDs.
 
-## Folder Structure
-The project is structured modularly for easy customization and extensibility:
+## Project Structure
+
 ```text
 herdbot/
-├── bot.py                # Bot entry point
-├── config.py             # Config loader and validation
-├── utils.py              # Helper utilities and active jobs state registry
-├── pixi.toml             # Pixi package manager config
+├── bot.py                # Session entry point
+├── config.py             # Config parsing & validation
+├── utils.py              # Shared helpers & active jobs registry
 ├── downloaders/
-│   ├── aria2.py          # Handles aria2c subprocess downloading
-│   └── rclone.py         # Handles rclone subprocess uploading
+│   ├── aria2.py          # aria2c downloader interface
+│   └── rclone.py         # rclone uploader interface
 └── handlers/
-    ├── __init__.py       # Handler registration router
+    ├── __init__.py       # Event router configuration
     ├── start.py          # /start and /help commands
     ├── stats.py          # /stats and /status commands
-    └── mirror.py         # Main link & file uploader handler
+    └── mirror.py         # Link & media processing pipeline
 ```
 
----
+## Documentation
 
-## Bot Commands
-- `/start` - Start the bot, greet the user, and show available commands.
-- `/help` - Show detailed usage instructions.
-- `/status` - Check the live status of all active download and upload jobs, including speed, ETA, and progress bars.
-- `/stats` - View server metrics: disk space on the download volume, CPU load average, and active memory (RAM) usage.
-
----
-
-## Prerequisites
-Ensure you have [Pixi](https://pixi.sh) installed. If you do not, you can install it using:
-```bash
-curl -fsSL https://pixi.sh/install.sh | bash
-```
-
----
-
-## Setup Instructions
-
-### 1. Configure Environment Variables
-Copy `.env.example` to `.env` and fill in the values:
-```bash
-cp .env.example .env
-```
-
-Open `.env` and configure:
-1. **`TELEGRAM_API_ID` & `TELEGRAM_API_HASH`:** Create an application on [my.telegram.org](https://my.telegram.org) under the "API development tools" section to retrieve these.
-2. **`TELEGRAM_BOT_TOKEN`:** Generate a token by speaking to [@BotFather](https://t.me/BotFather) on Telegram.
-3. **`AUTHORIZED_USERS`:** A comma-separated list of your Telegram User IDs (e.g., `12345678,987654321`). You can find your user ID using bots like [@userinfobot](https://t.me/userinfobot). If left empty, anyone can access the bot.
-4. **`RCLONE_REMOTE_NAME`:** The name of the rclone remote (default is `gdrive`).
-5. **`RCLONE_UPLOAD_DIR`:** The destination directory on Google Drive where files will be uploaded (default is `TelegramBotUploads`).
-
----
-
-### 2. Configure Google Drive in Rclone
-HerdBot uses `rclone` internally to communicate with Google Drive. You must authenticate it once before running the bot:
-
-Run the following command in your terminal:
-```bash
-pixi run config-gdrive
-```
-
-Follow the interactive setup steps:
-1. Press `n` to create a new remote.
-2. Name it exactly what you set in `.env` (default is `gdrive`).
-3. Choose the storage type by finding the number for **Google Drive** (usually searching for `drive`).
-4. Leave `client_id` and `client_secret` blank to use default credentials.
-5. For scope, choose option `1` (Full access to all files, `drive`).
-6. Leave `root_folder_id` and `service_account_file` blank.
-7. Choose `n` for Edit advanced config (default is `n`).
-8. Choose `y` for Use auto config. A browser window will open to authenticate your Google account and grant permissions to rclone.
-9. Choose `n` for Configure this as a Shared Drive (unless you are using one).
-10. Confirm and save the configuration by pressing `y`.
-
----
-
-### 3. Run the Bot
-To start the Telegram bot, run:
-```bash
-pixi run start-bot
-```
-
-Once started, open a chat with your bot on Telegram, send `/start`, and begin sending files or links!
+For setup, Google Drive remote authentication, and running instructions, refer to [docs/setup.md](docs/setup.md).
