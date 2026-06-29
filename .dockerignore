@@ -2,8 +2,7 @@
 downloads/
 .git/
 .jj/
-bot.session
-bot.session-journal
+session/
 .env
 config/rclone/
 __pycache__/

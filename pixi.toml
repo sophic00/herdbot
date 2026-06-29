@@ -27,11 +27,11 @@ dev = { features = ["dev"] }
 start-bot = "python bot.py"
 config-gdrive = "rclone config"
 docker-build = "docker compose build"
-docker-up = { cmd = "touch bot.session && touch bot.session-journal && docker compose up -d", depends-on = ["docker-build"] }
+docker-up = { cmd = "docker compose up -d", depends-on = ["docker-build"] }
 docker-down = "docker compose down"
 docker-restart = "docker compose restart"
 docker-logs = "docker compose logs -f"
-docker-update = { cmd = "docker compose pull && touch bot.session && touch bot.session-journal && docker compose up -d --build herdbot" }
+docker-update = { cmd = "docker compose pull && docker compose up -d --build herdbot" }
 
 [feature.dev.tasks]
 lint = "ruff check"

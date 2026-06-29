@@ -6,9 +6,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Persist Telegram session files
-      - ./bot.session:/app/bot.session
-      - ./bot.session-journal:/app/bot.session-journal
+      # Persist Telegram session folder
+      - ./session:/app/session
       # Persist rclone remote configurations
       - ./config/rclone:/root/.config/rclone
       # Map temporary download directory

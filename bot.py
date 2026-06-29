@@ -1,4 +1,5 @@
 import logging
+import os
 
 from telethon import TelegramClient
 
@@ -17,7 +18,8 @@ def main():
         return
         
     logger.info("Initializing Telethon Client...")
-    client = TelegramClient('bot', config.API_ID, config.API_HASH)
+    os.makedirs('session', exist_ok=True)
+    client = TelegramClient('session/bot', config.API_ID, config.API_HASH)
     
     # Register callback handlers
     register_handlers(client)
