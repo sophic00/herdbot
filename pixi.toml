@@ -10,6 +10,8 @@ python = ">=3.11"
 aria2 = ">=1.36"
 rclone = ">=1.60"
 python-dotenv = ">=1.0"
+ruff = ">=0.3"
+pyright = ">=1.1"
 
 [pypi-dependencies]
 telethon = ">=1.35"
@@ -18,3 +20,6 @@ cryptg = ">=0.4"
 [tasks]
 start-bot = "python bot.py"
 config-gdrive = "rclone config"
+lint = "ruff check"
+typecheck = "pyright"
+check = { depends-on = ["lint", "typecheck"] }

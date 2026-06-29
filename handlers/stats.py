@@ -1,7 +1,9 @@
 import os
 import shutil
-import utils
+
 import config
+import utils
+
 
 async def stats_handler(event):
     """Handler for the /stats command."""
@@ -40,7 +42,7 @@ async def stats_handler(event):
     mem_info = "🧠 *RAM Memory:* N/A"
     if os.path.exists("/proc/meminfo"):
         try:
-            with open("/proc/meminfo", "r") as f:
+            with open("/proc/meminfo") as f:
                 lines = f.readlines()
             mem_total = 0
             mem_avail = 0

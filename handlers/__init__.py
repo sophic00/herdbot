@@ -1,7 +1,9 @@
 from telethon import events
-from handlers.start import start_handler, help_handler
-from handlers.stats import stats_handler, status_handler
+
 from handlers.mirror import mirror_handler
+from handlers.start import help_handler, start_handler
+from handlers.stats import stats_handler, status_handler
+
 
 def register_handlers(client):
     """Registers all callback handlers on the Telethon Client."""

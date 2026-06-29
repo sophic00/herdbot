@@ -1,10 +1,11 @@
+import logging
 import os
 import re
 import shutil
-import logging
 import urllib.parse
-import utils
+
 import config
+import utils
 from downloaders.aria2 import run_aria2_download
 from downloaders.rclone import run_rclone_upload
 

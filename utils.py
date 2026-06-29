@@ -1,6 +1,8 @@
-import time
 import logging
+import time
+
 from telethon.tl.types import DocumentAttributeFilename
+
 import config
 
 logger = logging.getLogger(__name__)
@@ -43,7 +45,7 @@ def is_authorized(user_id: int) -> bool:
         return True
     return user_id in config.AUTHORIZED_USERS
 
-def get_filename(message) -> str:
+def get_filename(message) -> str | None:
     """Safely extract filename from a message's document attributes."""
     if not message.media or not message.document:
         return None
@@ -51,3 +53,20 @@ def get_filename(message) -> str:
         if isinstance(attr, DocumentAttributeFilename):
             return attr.file_name
     return None
+
+async def tg_progress_callback(received: int, total: int, status_msg, last_edit_state: dict):
+    """Progress callback for Telethon media downloads."""
+    if not total:
+        return
+    percent = int(received * 100 / total)
+    bar = make_progress_bar(percent)
+    
+    rec_str = format_size(received)
+    tot_str = format_size(total)
+    
+    progress_text = (
+        f"📥 *Downloading file from Telegram...*\n"
+        f"`[{bar}] {percent}%`\n"
+        f"🔸 *Downloaded:* {rec_str} of {tot_str}"
+    )
+    await edit_message_throttled(status_msg, progress_text, last_edit_state)

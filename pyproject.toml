@@ -1,0 +1,18 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "ASYNC"]
+ignore = ["ASYNC230", "ASYNC240", "E501"]
+
+[tool.pyright]
+include = ["."]
+exclude = [
+    "**/__pycache__",
+    ".pixi",
+    "downloads"
+]
+pythonVersion = "3.11"
+reportMissingImports = true
+reportMissingTypeStubs = false

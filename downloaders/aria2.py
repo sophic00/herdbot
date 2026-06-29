@@ -1,7 +1,8 @@
-import os
-import re
 import asyncio
 import logging
+import os
+import re
+
 import utils
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,7 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
     if job_id in utils.active_jobs:
         utils.active_jobs[job_id]["phase"] = "Downloading"
         
+    assert process.stdout is not None
     while True:
         line_bytes = await process.stdout.readline()
         if not line_bytes:

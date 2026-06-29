@@ -1,8 +1,9 @@
-import re
 import asyncio
 import logging
-import utils
+import re
+
 import config
+import utils
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
     if job_id in utils.active_jobs:
         utils.active_jobs[job_id]["phase"] = "Uploading"
         
+    assert process.stdout is not None
     while True:
         line_bytes = await process.stdout.readline()
         if not line_bytes:

@@ -1,5 +1,7 @@
 import logging
+
 from telethon import TelegramClient
+
 import config
 from handlers import register_handlers
 
