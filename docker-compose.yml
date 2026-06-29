@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  herdbot:
+    build: .
+    container_name: herdbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist Telegram session files
+      - ./bot.session:/app/bot.session
+      - ./bot.session-journal:/app/bot.session-journal
+      # Persist rclone remote configurations
+      - ./config/rclone:/root/.config/rclone
+      # Map temporary download directory
+      - ./downloads:/app/downloads
