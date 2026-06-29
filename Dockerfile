@@ -1,5 +1,5 @@
 # Use the official Pixi image as the build and runtime base
-FROM prefixdev/pixi:latest
+FROM ghcr.io/prefix-dev/pixi:latest
 
 WORKDIR /app
 
