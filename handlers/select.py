@@ -120,7 +120,7 @@ async def prefetch_magnet_metadata(client, chat_id, msg_id, job_id, magnet_link)
         "aria2c",
         f"--dir={job_dir}",
         "--bt-metadata-only=true",
-        "--save-metadata=true",
+        "--bt-save-metadata=true",
         "--bt-tracker-timeout=15",
         "--bt-stop-timeout=30",
         magnet_link
