@@ -59,6 +59,21 @@ The bot will run interactively in your terminal. You can terminate the session u
 
 ---
 
+## Selective Torrent Downloads
+
+When you send a `.torrent` file or a magnet link to HerdBot, you will be prompted with two choices:
+- `🚀 Download All`: Immediately downloads the entire torrent content.
+- `📂 Select Files`: Spawns an interactive file/directory selector directly in Telegram using inline buttons.
+
+### Navigating the File Browser:
+- **Files**: Indicated by checkboxes. Click a file button (e.g. `[☐] file_name.mp4`) to toggle its download state.
+- **Directories**: Indicated by folder emoji `📁`. Click to navigate inside the folder.
+- **Back Navigation**: Click `◀️ Back` to return to the parent directory.
+- **Bulk Toggle**: Click `Select All` or `Deselect All` to modify all files in the current folder.
+- **Download**: Once you are satisfied with your selection, click `🚀 Start Download` to download and upload only the selected files.
+
+---
+
 ## Command Usage
 
 - `/start`: Starts the bot and lists available options.
