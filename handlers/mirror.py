@@ -115,6 +115,15 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
                 await utils.edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
             return
             
+        # Clean up any leftover .aria2 control files before checking folder contents or uploading
+        for root_dir, _, files in os.walk(job_dir):
+            for file in files:
+                if file.endswith(".aria2"):
+                    try:
+                        os.remove(os.path.join(root_dir, file))
+                    except Exception:
+                        pass
+
         # Check if downloaded anything
         downloaded_contents = os.listdir(job_dir)
         if not downloaded_contents:

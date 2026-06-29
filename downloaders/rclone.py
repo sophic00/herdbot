@@ -23,6 +23,7 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
         source_dir,
         dest_path,
         "--drive-chunk-size=64M",
+        "--exclude", "*.aria2",
         "--stats=1s",
         "-v"
     ]
