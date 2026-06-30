@@ -223,10 +223,25 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         upload_success = await run_rclone_upload(job_dir, job_id, status_msg, last_edit_state)
         
         if upload_success:
+            link_text = ""
+            if config.GD_INDEX_URL:
+                index_base = config.GD_INDEX_URL.rstrip("/")
+                if config.RCLONE_ISOLATE_JOBS:
+                    path_part = f"{config.RCLONE_DEST_DIR}/{job_id}"
+                else:
+                    if downloaded_contents and len(downloaded_contents) == 1:
+                        path_part = f"{config.RCLONE_DEST_DIR}/{downloaded_contents[0]}"
+                    else:
+                        path_part = config.RCLONE_DEST_DIR
+                index_url = f"{index_base}/{urllib.parse.quote(path_part)}"
+                link_text = f"🔗 *Index Link:* [Click Here]({index_url})\n"
+
+            dest_folder = f"{config.RCLONE_DEST_DIR}/{job_id}" if config.RCLONE_ISOLATE_JOBS else config.RCLONE_DEST_DIR
             await utils.edit_message_throttled(
                 status_msg, 
                 f"✅ *Upload complete!*\n\n"
-                f"📂 Folder: `{config.RCLONE_DEST_DIR}`\n"
+                f"📂 Folder: `{dest_folder}`\n"
+                f"{link_text}"
                 f"🧹 Local files cleaned up successfully.",
                 last_edit_state
             )
