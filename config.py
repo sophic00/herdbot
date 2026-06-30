@@ -29,6 +29,8 @@ if API_ID:
 RCLONE_REMOTE = os.getenv("RCLONE_REMOTE_NAME", "gdrive")
 RCLONE_DEST_DIR = os.getenv("RCLONE_UPLOAD_DIR", "TelegramBotUploads")
 DOWNLOAD_DIR = os.getenv("DOWNLOAD_DIR", "./downloads")
+GD_INDEX_URL = os.getenv("GD_INDEX_URL", "")
+RCLONE_ISOLATE_JOBS = os.getenv("RCLONE_ISOLATE_JOBS", "true").lower() in ("true", "1", "yes")
 
 # Ensure download directory exists
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
