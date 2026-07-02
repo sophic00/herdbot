@@ -278,10 +278,13 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 torrent_path = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.torrent")
                 
                 last_edit_state["time"] = 0
-                await client.download_media(
-                    target,
-                    file=torrent_path,
-                    progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
+                await asyncio.wait_for(
+                    client.download_media(
+                        target,
+                        file=torrent_path,
+                        progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
+                    ),
+                    timeout=120.0  # 2 minutes timeout for torrent files
                 )
             
             # Start aria2 with downloaded torrent file
@@ -294,10 +297,13 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             last_edit_state["time"] = 0
             await utils.update_active_job(job_id, {"phase": "Downloading Telegram File"})
                 
-            await client.download_media(
-                target,
-                file=local_path,
-                progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
+            await asyncio.wait_for(
+                client.download_media(
+                    target,
+                    file=local_path,
+                    progress_callback=lambda r, t: utils.tg_progress_callback(r, t, status_msg, last_edit_state, job_id)
+                ),
+                timeout=3600.0  # 1 hour timeout for downloading media files
             )
             success = True
             
@@ -531,7 +537,14 @@ async def mirror_handler(event):
         if is_torrent_file:
             # Download torrent file first to a temp path so we can parse it
             temp_torrent_path = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.torrent")
-            await event.client.download_media(target, file=temp_torrent_path)
+            try:
+                await asyncio.wait_for(
+                    event.client.download_media(target, file=temp_torrent_path),
+                    timeout=120.0  # 2 minutes timeout for torrent metadata
+                )
+            except asyncio.TimeoutError:
+                await event.respond("❌ **Timeout downloading torrent file from Telegram.**")
+                return
             
         # Register in selection_sessions
         await utils.set_selection_session(job_id, {

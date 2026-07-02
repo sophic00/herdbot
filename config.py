@@ -40,9 +40,22 @@ def get_authorized_users() -> list[int]:
     users_raw = os.getenv("AUTHORIZED_USERS", "")
     if not users_raw:
         return []
-    return [int(u.strip()) for u in users_raw.split(",") if u.strip().isdigit()]
+    authorized = []
+    for u in users_raw.split(","):
+        u_clean = u.strip()
+        if not u_clean:
+            continue
+        if u_clean.isdigit():
+            authorized.append(int(u_clean))
+        else:
+            logger.warning(f"Invalid user ID in AUTHORIZED_USERS config: '{u_clean}'")
+    return authorized
 
-AUTHORIZED_USERS = get_authorized_users()
+AUTHORIZED_USERS = set(get_authorized_users())
 
 # Concurrency limits
-MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
+try:
+    MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
+except ValueError:
+    logger.error("MAX_CONCURRENT_JOBS must be an integer. Falling back to default (2).")
+    MAX_CONCURRENT_JOBS = 2
