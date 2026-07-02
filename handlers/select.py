@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shutil
 
 from telethon import Button
 
@@ -27,9 +28,9 @@ def build_directory_map(files_list):
                 
     return dir_map, id_map
 
-async def show_directory_view(client, chat_id, msg_id, job_id, dir_id):
-    """Renders the file/directory browser using inline buttons."""
-    session = utils.selection_sessions.get(job_id)
+async def show_directory_view(client, chat_id, msg_id, job_id, dir_id, page=0):
+    """Renders the file/directory browser using inline buttons with pagination."""
+    session = await utils.get_selection_session(job_id)
     if not session:
         return
         
@@ -64,34 +65,58 @@ async def show_directory_view(client, chat_id, msg_id, job_id, dir_id):
                 if sub_path in dir_map and sub_name not in subdirs:
                     subdirs[sub_name] = dir_map[sub_path]
                     
+    # Combine subdirectories and files for pagination
+    ITEMS_PER_PAGE = 10
+    all_items = []
+    for sub_name, sub_id in sorted(subdirs.items()):
+        all_items.append(("dir", sub_name, sub_id))
+    for f in sorted(current_files, key=lambda x: x["name"]):
+        all_items.append(("file", f["name"], f))
+        
+    total_items = len(all_items)
+    max_page = max(0, (total_items - 1) // ITEMS_PER_PAGE)
+    page = max(0, min(page, max_page))
+    
+    start_idx = page * ITEMS_PER_PAGE
+    end_idx = start_idx + ITEMS_PER_PAGE
+    page_items = all_items[start_idx:end_idx]
+    
     # Build inline buttons
     buttons = []
     
-    # 1. Add directories
-    for sub_name, sub_id in sorted(subdirs.items()):
-        buttons.append([Button.inline(f"📁 {sub_name}", data=f"dir:{job_id}:{sub_id}")])
+    # Render page items
+    for item_type, name, data in page_items:
+        if item_type == "dir":
+            buttons.append([Button.inline(f"📁 {name}", data=f"dir:{job_id}:{data}:0")])
+        else:
+            cb_char = "✅" if data["selected"] else "☐"
+            buttons.append([
+                Button.inline(
+                    f"{cb_char} {name} ({utils.format_size(data['size'])})", 
+                    data=f"file:{job_id}:{data['index']}:{dir_id}:{page}"
+                )
+            ])
+            
+    # Add Prev/Next buttons if paginated
+    pagination_row = []
+    if page > 0:
+        pagination_row.append(Button.inline("⏮️ Prev", data=f"dir:{job_id}:{dir_id}:{page-1}"))
+    if end_idx < total_items:
+        pagination_row.append(Button.inline("⏭️ Next", data=f"dir:{job_id}:{dir_id}:{page+1}"))
+    if pagination_row:
+        buttons.append(pagination_row)
         
-    # 2. Add files (checkbox + name + size)
-    for f in sorted(current_files, key=lambda x: x["name"]):
-        cb_char = "✅" if f["selected"] else "☐"
-        buttons.append([
-            Button.inline(
-                f"{cb_char} {f['name']} ({utils.format_size(f['size'])})", 
-                data=f"file:{job_id}:{f['index']}:{dir_id}"
-            )
-        ])
-        
-    # 3. Add Navigation & Controls
+    # Navigation & Controls
     nav_row = []
     if dir_id != 0:
         parent_path = current_path[:-1]
         parent_id = dir_map.get(parent_path, 0)
-        nav_row.append(Button.inline("◀️ Back", data=f"dir:{job_id}:{parent_id}"))
+        nav_row.append(Button.inline("◀️ Back", data=f"dir:{job_id}:{parent_id}:0"))
     buttons.append(nav_row)
     
     toggle_row = [
-        Button.inline("Select All", data=f"sad:{job_id}:{dir_id}"),
-        Button.inline("Deselect All", data=f"dad:{job_id}:{dir_id}")
+        Button.inline("Select All", data=f"sad:{job_id}:{dir_id}:{page}"),
+        Button.inline("Deselect All", data=f"dad:{job_id}:{dir_id}:{page}")
     ]
     buttons.append(toggle_row)
     
@@ -100,8 +125,9 @@ async def show_directory_view(client, chat_id, msg_id, job_id, dir_id):
     
     # Render message text
     path_str = f"/{'/'.join(current_path)}" if current_path else "/"
+    page_info = f" \n📄 **Page:** `{page+1}/{max_page+1}`" if max_page > 0 else ""
     text = (
-        f"📂 **Browsing:** `{root_name}{path_str}`\n\n"
+        f"📂 **Browsing:** `{root_name}{path_str}`{page_info}\n\n"
         f"Please select the files/folders you want to download. "
         f"Toggle files with checkboxes or enter folders to explore."
     )
@@ -162,7 +188,6 @@ async def prefetch_magnet_metadata(client, chat_id, msg_id, job_id, magnet_link)
     return None
 
 def shutil_copy_file(src, dst):
-    import shutil
     try:
         shutil.copy2(src, dst)
         return True
@@ -170,7 +195,6 @@ def shutil_copy_file(src, dst):
         return False
 
 def shutil_rm_tree(path):
-    import shutil
     if os.path.exists(path):
         shutil.rmtree(path, ignore_errors=True)
 
@@ -178,6 +202,10 @@ async def select_callback_handler(event):
     """Callback query router for directory selection & download initialization."""
     data = event.data.decode('utf-8')
     parts = data.split(":")
+    if len(parts) < 2:
+        await event.answer("❌ Invalid request.", alert=True)
+        return
+        
     action = parts[0]
     job_id = parts[1]
     
@@ -190,21 +218,21 @@ async def select_callback_handler(event):
     
     if action == "dl_all":
         # Delete selection menu and trigger full download
-        session = utils.selection_sessions.pop(job_id, None)
-        target = session["target"] if session else None
-        is_torrent_file = session["is_torrent_file"] if session else False
-        zip_content = session.get("zip_content", False) if session else False
-        
-        if not target:
+        session = await utils.pop_selection_session(job_id)
+        if not session:
             await event.answer("❌ Session expired.", alert=True)
             return
             
+        target = session["target"]
+        is_torrent_file = session["is_torrent_file"]
+        zip_content = session.get("zip_content", False)
+        
         await client.edit_message(chat_id, msg_id, "⏳ **Initializing full download...**")
         asyncio.create_task(start_mirror_job(client, chat_id, msg_id, target, is_torrent_file, selected_indexes=None, zip_content=zip_content))
         await event.answer()
         
     elif action == "browser_init":
-        session = utils.selection_sessions.get(job_id)
+        session = await utils.get_selection_session(job_id)
         if not session:
             await event.answer("❌ Session expired.", alert=True)
             return
@@ -218,7 +246,7 @@ async def select_callback_handler(event):
             torrent_path = await prefetch_magnet_metadata(client, chat_id, msg_id, job_id, target)
             if not torrent_path:
                 await client.edit_message(chat_id, msg_id, "❌ **Failed to retrieve torrent metadata.** Check tracker/peer availability.")
-                utils.selection_sessions.pop(job_id, None)
+                await utils.pop_selection_session(job_id)
                 return
             session["torrent_path"] = torrent_path
             session["is_torrent_file"] = True
@@ -236,35 +264,38 @@ async def select_callback_handler(event):
             })
             
             await event.answer()
-            await show_directory_view(client, chat_id, msg_id, job_id, 0)
+            await show_directory_view(client, chat_id, msg_id, job_id, 0, 0)
         except Exception as e:
             logger.error(f"Failed to parse torrent files for job {job_id}: {e}")
             await client.edit_message(chat_id, msg_id, f"❌ **Failed to parse torrent file:** `{e}`")
-            utils.selection_sessions.pop(job_id, None)
+            await utils.pop_selection_session(job_id)
             
     elif action == "dir":
         dir_id = int(parts[2])
+        page = int(parts[3]) if len(parts) > 3 else 0
         await event.answer()
-        await show_directory_view(client, chat_id, msg_id, job_id, dir_id)
+        await show_directory_view(client, chat_id, msg_id, job_id, dir_id, page)
         
     elif action == "file":
         file_index = int(parts[2])
         dir_id = int(parts[3])
-        session = utils.selection_sessions.get(job_id)
+        page = int(parts[4]) if len(parts) > 4 else 0
+        session = await utils.get_selection_session(job_id)
         if session:
             for f in session["files"]:
                 if f["index"] == file_index:
                     f["selected"] = not f["selected"]
                     break
             await event.answer()
-            await show_directory_view(client, chat_id, msg_id, job_id, dir_id)
+            await show_directory_view(client, chat_id, msg_id, job_id, dir_id, page)
         else:
             await event.answer("❌ Session expired.", alert=True)
             
     elif action in ("sad", "dad"):
         # Select/Deselect All in Directory
         dir_id = int(parts[2])
-        session = utils.selection_sessions.get(job_id)
+        page = int(parts[3]) if len(parts) > 3 else 0
+        session = await utils.get_selection_session(job_id)
         if session:
             current_path = session["id_map"].get(dir_id, ())
             new_state = (action == "sad")
@@ -275,12 +306,12 @@ async def select_callback_handler(event):
                     file["selected"] = new_state
                     
             await event.answer()
-            await show_directory_view(client, chat_id, msg_id, job_id, dir_id)
+            await show_directory_view(client, chat_id, msg_id, job_id, dir_id, page)
         else:
             await event.answer("❌ Session expired.", alert=True)
             
     elif action == "start":
-        session = utils.selection_sessions.pop(job_id, None)
+        session = await utils.pop_selection_session(job_id)
         if not session:
             await event.answer("❌ Session expired.", alert=True)
             return
@@ -290,7 +321,7 @@ async def select_callback_handler(event):
         if not selected_indexes:
             await event.answer("❌ Please select at least one file to download.", alert=True)
             # Re-register session so they don't lose progress
-            utils.selection_sessions[job_id] = session
+            await utils.set_selection_session(job_id, session)
             return
             
         await event.answer("Starting download...", alert=False)
