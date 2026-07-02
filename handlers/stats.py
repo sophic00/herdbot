@@ -70,7 +70,7 @@ async def stats_handler(event):
 
     # Bot Uptime & Data Traffic Stats
     uptime_str = utils.get_uptime_string()
-    total_dl, total_ul = utils.get_total_stats()
+    total_dl, total_ul = await utils.get_total_stats()
     total_dl_str = utils.format_size(total_dl)
     total_ul_str = utils.format_size(total_ul)
     

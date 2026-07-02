@@ -542,7 +542,7 @@ async def mirror_handler(event):
                     event.client.download_media(target, file=temp_torrent_path),
                     timeout=120.0  # 2 minutes timeout for torrent metadata
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 await event.respond("❌ **Timeout downloading torrent file from Telegram.**")
                 return
             

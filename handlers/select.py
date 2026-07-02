@@ -10,6 +10,8 @@ import utils
 
 logger = logging.getLogger(__name__)
 
+ITEMS_PER_PAGE = 10
+
 def build_directory_map(files_list):
     """Build unique integer IDs for every subdirectory in the torrent."""
     dir_map = {(): 0}
@@ -66,7 +68,6 @@ async def show_directory_view(client, chat_id, msg_id, job_id, dir_id, page=0):
                     subdirs[sub_name] = dir_map[sub_path]
                     
     # Combine subdirectories and files for pagination
-    ITEMS_PER_PAGE = 10
     all_items = []
     for sub_name, sub_id in sorted(subdirs.items()):
         all_items.append(("dir", sub_name, sub_id))
