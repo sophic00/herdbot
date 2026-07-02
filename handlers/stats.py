@@ -1,3 +1,4 @@
+import asyncio
 import os
 import shutil
 
@@ -40,10 +41,12 @@ async def stats_handler(event):
 
     # RAM Memory Info
     mem_info = "🧠 **RAM Memory:** N/A"
-    if os.path.exists("/proc/meminfo"):
+    if await asyncio.to_thread(os.path.exists, "/proc/meminfo"):
         try:
-            with open("/proc/meminfo") as f:
-                lines = f.readlines()
+            def read_meminfo():
+                with open("/proc/meminfo") as f:
+                    return f.readlines()
+            lines = await asyncio.to_thread(read_meminfo)
             mem_total = 0
             mem_avail = 0
             for line in lines:

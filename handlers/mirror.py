@@ -41,6 +41,16 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
+def get_dir_size(path: str) -> int:
+    total = 0
+    for root, _, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    return total
+
 async def update_queue_positions(client):
     """Update the queue position messages for all remaining queued jobs."""
     queue_snapshot = await utils.get_job_queue_snapshot()
@@ -245,29 +255,25 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             return
             
         # Clean up any leftover .aria2 control files before checking folder contents or uploading
-        for root_dir, _, files in os.walk(job_dir):
-            for file in files:
-                if file.endswith(".aria2"):
-                    try:
-                        os.remove(os.path.join(root_dir, file))
-                    except Exception:
-                        pass
+        def cleanup_aria2_sync():
+            for root_dir, _, files in os.walk(job_dir):
+                for file in files:
+                    if file.endswith(".aria2"):
+                        try:
+                            os.remove(os.path.join(root_dir, file))
+                        except Exception:
+                            pass
+        await asyncio.to_thread(cleanup_aria2_sync)
 
         # Check if downloaded anything
-        downloaded_contents = os.listdir(job_dir)
+        downloaded_contents = await asyncio.to_thread(os.listdir, job_dir)
         if not downloaded_contents:
             await utils.edit_message_throttled(status_msg, "❌ **Download completed, but no files found.**", last_edit_state)
             return
             
         # Record download stats
-        downloaded_size = 0
-        for root_dir, _, files in os.walk(job_dir):
-            for file in files:
-                try:
-                    downloaded_size += os.path.getsize(os.path.join(root_dir, file))
-                except Exception:
-                    pass
-        utils.add_download_stats(downloaded_size)
+        downloaded_size = await asyncio.to_thread(get_dir_size, job_dir)
+        await utils.add_download_stats(downloaded_size)
             
         # Zipping phase
         if zip_content:
@@ -289,11 +295,11 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 )
                 
                 # Delete all local downloaded files in the folder
-                shutil.rmtree(job_dir, ignore_errors=True)
-                os.makedirs(job_dir, exist_ok=True)
+                await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
+                await asyncio.to_thread(os.makedirs, job_dir, exist_ok=True)
                 
                 # Move the newly created zip file into job_dir
-                shutil.move(temp_zip_path, os.path.join(job_dir, zip_filename))
+                await asyncio.to_thread(shutil.move, temp_zip_path, os.path.join(job_dir, zip_filename))
                 
                 # Update downloaded contents array so that GD Index link matches the zip file
                 downloaded_contents = [zip_filename]
@@ -301,9 +307,9 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 logger.error(f"Zipping failed: {e}", exc_info=True)
                 await utils.edit_message_throttled(status_msg, f"⚠️ **Zipping failed:** `{e}`. Proceeding to upload raw files.", last_edit_state)
                 # Cleanup temp zip if it exists
-                if os.path.exists(temp_zip_path):
+                if await asyncio.to_thread(os.path.exists, temp_zip_path):
                     try:
-                        os.remove(temp_zip_path)
+                        await asyncio.to_thread(os.remove, temp_zip_path)
                     except Exception:
                         pass
             
@@ -312,18 +318,12 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         await utils.edit_message_throttled(status_msg, f"⏳ **Preparing to upload to Google Drive...**\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
         
         # Calculate size before move/upload, as rclone move will delete files from job_dir
-        upload_size = 0
-        for root_dir, _, files in os.walk(job_dir):
-            for file in files:
-                try:
-                    upload_size += os.path.getsize(os.path.join(root_dir, file))
-                except Exception:
-                    pass
+        upload_size = await asyncio.to_thread(get_dir_size, job_dir)
         
         upload_success = await run_rclone_upload(job_dir, job_id, status_msg, last_edit_state)
         
         if upload_success:
-            utils.add_upload_stats(upload_size)
+            await utils.add_upload_stats(upload_size)
             link_text = ""
             if config.GD_INDEX_URL:
                 index_base = config.GD_INDEX_URL.rstrip("/")
@@ -367,11 +367,11 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             pass
     finally:
         # Guarantee cleanup of local files
-        if os.path.exists(job_dir):
-            shutil.rmtree(job_dir, ignore_errors=True)
-        if torrent_path and os.path.exists(torrent_path):
+        if await asyncio.to_thread(os.path.exists, job_dir):
+            await asyncio.to_thread(shutil.rmtree, job_dir, ignore_errors=True)
+        if torrent_path and await asyncio.to_thread(os.path.exists, torrent_path):
             try:
-                os.remove(torrent_path)
+                await asyncio.to_thread(os.remove, torrent_path)
             except Exception as e:
                 logger.warning(f"Failed to remove torrent path {torrent_path}: {e}")
             
