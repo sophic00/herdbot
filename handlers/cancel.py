@@ -21,17 +21,17 @@ async def cancel_handler(event):
 
     job_id = args[1].strip()
     
-    if job_id not in utils.active_jobs:
+    job = await utils.get_active_job(job_id)
+    if not job:
         await event.respond(f"❌ Job `{job_id}` not found or already completed.")
         return
 
-    job = utils.active_jobs[job_id]
-    job["cancelled"] = True
+    await utils.update_active_job(job_id, {"cancelled": True})
     
     # Handle queued job cancellation
     if job.get("phase") == "Queued":
         # Remove from queue list
-        utils.job_queue = [q for q in utils.job_queue if f"{q['chat_id']}_{q['message_id']}" != job_id]
+        await utils.remove_from_job_queue(job_id)
         
         # Update status message if available
         status_msg = job.get("status_msg")
@@ -42,11 +42,11 @@ async def cancel_handler(event):
                 pass
                 
         # Remove from active registry
-        utils.active_jobs.pop(job_id, None)
+        await utils.pop_active_job(job_id)
         
         # Recalculate and update the remaining queue positions
-        from handlers.mirror import process_next_in_queue
-        await process_next_in_queue(event.client)
+        from handlers.mirror import update_queue_positions
+        await update_queue_positions(event.client)
         
         await event.respond(f"✅ Queued job `{job_id}` has been cancelled and removed from the queue.")
         return

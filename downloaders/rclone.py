@@ -28,6 +28,8 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
         "--drive-chunk-size=64M",
         "--exclude", "*.aria2",
         "--stats=1s",
+        "--retries=5",
+        "--low-level-retries=10",
         "-v"
     ]
     
@@ -39,12 +41,23 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
     )
     
     # Store process handle and initialize phase
-    if job_id in utils.active_jobs:
-        utils.active_jobs[job_id]["process"] = process
-        utils.active_jobs[job_id]["phase"] = "Uploading"
+    if await utils.has_active_job(job_id):
+        await utils.update_active_job(job_id, {"process": process, "phase": "Uploading"})
         
-    assert process.stdout is not None
+    if process.stdout is None:
+        raise RuntimeError("stdout pipe not available")
+        
     while True:
+        # Check if job was cancelled
+        job = await utils.get_active_job(job_id)
+        if job and job.get("cancelled"):
+            logger.info(f"Cancellation detected for job {job_id} inside rclone loop. Terminating process.")
+            try:
+                process.terminate()
+            except Exception:
+                pass
+            break
+            
         line_bytes = await process.stdout.readline()
         if not line_bytes:
             break
@@ -60,8 +73,8 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
             eta = groups["eta"]
             
             # Update global state
-            if job_id in utils.active_jobs:
-                utils.active_jobs[job_id].update({
+            if await utils.has_active_job(job_id):
+                await utils.update_active_job(job_id, {
                     "percent": percent,
                     "speed": speed,
                     "eta": eta,

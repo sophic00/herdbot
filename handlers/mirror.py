@@ -14,36 +14,41 @@ from downloaders.rclone import run_rclone_upload
 
 logger = logging.getLogger(__name__)
 
+async def update_queue_positions(client):
+    """Update the queue position messages for all remaining queued jobs."""
+    queue_snapshot = await utils.get_job_queue_snapshot()
+    for idx, queued_job in enumerate(queue_snapshot, start=1):
+        q_id = f"{queued_job['chat_id']}_{queued_job['message_id']}"
+        new_text = f"⏳ **Job added to queue.** Position: `#{idx}`\n\nTo cancel, send: `/cancel {q_id}`"
+        try:
+            await utils.edit_message_throttled(queued_job["status_msg"], new_text, {"time": 0, "text": ""})
+        except Exception:
+            pass
+
 async def process_next_in_queue(client):
     """Automatically start the next job in the queue if concurrency limits allow."""
-    if utils.get_running_jobs_count() < config.MAX_CONCURRENT_JOBS and utils.job_queue:
-        next_job = utils.job_queue.pop(0)
-        
-        # Update the queue position messages for all remaining queued jobs
-        for idx, queued_job in enumerate(utils.job_queue, start=1):
-            q_id = f"{queued_job['chat_id']}_{queued_job['message_id']}"
-            new_text = f"⏳ **Job added to queue.** Position: `#{idx}`\n\nTo cancel, send: `/cancel {q_id}`"
-            try:
-                await utils.edit_message_throttled(queued_job["status_msg"], new_text, {"time": 0, "text": ""})
-            except Exception:
-                pass
+    if await utils.get_running_jobs_count() < config.MAX_CONCURRENT_JOBS:
+        next_job = await utils.pop_from_job_queue()
+        if next_job:
+            # Update the queue position messages for all remaining queued jobs
+            await update_queue_positions(client)
                 
-        # Start the next job
-        asyncio.create_task(
-            execute_mirror_job(
-                client=next_job["client"],
-                chat_id=next_job["chat_id"],
-                message_id=next_job["message_id"],
-                target=next_job["target"],
-                is_torrent_file=next_job["is_torrent_file"],
-                selected_indexes=next_job["selected_indexes"],
-                torrent_path=next_job["torrent_path"],
-                status_msg=next_job["status_msg"],
-                user_display=next_job["user_display"],
-                job_name=next_job["job_name"],
-                zip_content=next_job.get("zip_content", False)
+            # Start the next job
+            asyncio.create_task(
+                execute_mirror_job(
+                    client=next_job["client"],
+                    chat_id=next_job["chat_id"],
+                    message_id=next_job["message_id"],
+                    target=next_job["target"],
+                    is_torrent_file=next_job["is_torrent_file"],
+                    selected_indexes=next_job["selected_indexes"],
+                    torrent_path=next_job["torrent_path"],
+                    status_msg=next_job["status_msg"],
+                    user_display=next_job["user_display"],
+                    job_name=next_job["job_name"],
+                    zip_content=next_job.get("zip_content", False)
+                )
             )
-        )
 
 async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file, selected_indexes=None, torrent_path=None, status_msg=None, zip_content=False):
     """
@@ -80,21 +85,23 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
     if torrent_path and filename:
         job_name = filename
 
+    # Check concurrency limit BEFORE registering to make it clean and robust (Issue 4, 9)
+    running_jobs = await utils.get_running_jobs_count()
+    phase = "Queued" if running_jobs >= config.MAX_CONCURRENT_JOBS else "Initializing"
+
     # Register in active_jobs
-    utils.active_jobs[job_id] = {
+    job_data = {
         "user": user_display,
         "name": job_name,
-        "phase": "Initializing",
+        "phase": phase,
         "percent": 0,
         "speed": "0 B/s",
-        "eta": "N/A"
+        "eta": "N/A",
+        "status_msg": status_msg
     }
+    await utils.set_active_job(job_id, job_data)
 
-    # Check concurrency limit
-    if utils.get_running_jobs_count() > config.MAX_CONCURRENT_JOBS:
-        # Update state to Queued
-        utils.active_jobs[job_id]["phase"] = "Queued"
-        
+    if phase == "Queued":
         job_context = {
             "client": client,
             "chat_id": chat_id,
@@ -108,8 +115,8 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
             "status_msg": status_msg,
             "zip_content": zip_content
         }
-        utils.job_queue.append(job_context)
-        pos = len(utils.job_queue)
+        await utils.add_to_job_queue(job_context)
+        pos = await utils.get_job_queue_length()
         
         queue_text = f"⏳ **Job added to queue.** Position: `#{pos}`\n\nTo cancel, send: `/cancel {job_id}`"
         
@@ -118,6 +125,9 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
         else:
             status_msg = await client.send_message(chat_id, queue_text)
             job_context["status_msg"] = status_msg
+
+        # Store status_msg in active_jobs so the cancel handler can find it
+        await utils.update_active_job(job_id, {"status_msg": status_msg})
     else:
         # Execute immediately
         asyncio.create_task(
@@ -133,20 +143,23 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
     job_dir = os.path.join(config.DOWNLOAD_DIR, f"job_{job_id}")
     
     # Ensure job state reflects initialization
-    if job_id in utils.active_jobs:
-        utils.active_jobs[job_id]["phase"] = "Initializing"
+    job = await utils.get_active_job(job_id)
+    if job:
+        await utils.update_active_job(job_id, {"phase": "Initializing", "status_msg": status_msg})
     else:
-        utils.active_jobs[job_id] = {
+        await utils.set_active_job(job_id, {
             "user": user_display,
             "name": job_name,
             "phase": "Initializing",
             "percent": 0,
             "speed": "0 B/s",
-            "eta": "N/A"
-        }
+            "eta": "N/A",
+            "status_msg": status_msg
+        })
         
     if not status_msg:
         status_msg = await client.send_message(chat_id, f"⏳ **Initializing job...**\n\nTo cancel, send: `/cancel {job_id}`")
+        await utils.update_active_job(job_id, {"status_msg": status_msg})
     else:
         # Edit the status message if it was previously queued
         await utils.edit_message_throttled(
@@ -154,6 +167,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             f"⏳ **Initializing job...**\n\nTo cancel, send: `/cancel {job_id}`", 
             {"time": 0, "text": ""}
         )
+        await utils.update_active_job(job_id, {"status_msg": status_msg})
         
     last_edit_state = {"time": 0, "text": ""}
     
@@ -186,8 +200,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             local_path = os.path.join(job_dir, job_name)
             
             last_edit_state["time"] = 0
-            if job_id in utils.active_jobs:
-                utils.active_jobs[job_id]["phase"] = "Downloading Telegram File"
+            await utils.update_active_job(job_id, {"phase": "Downloading Telegram File"})
                 
             await client.download_media(
                 target,
@@ -197,7 +210,8 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             success = True
             
         if not success:
-            if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
+            job = await utils.get_active_job(job_id)
+            if job and job.get("cancelled"):
                 await utils.edit_message_throttled(status_msg, "❌ **Job cancelled by user.** Local files cleaned up.", last_edit_state)
             else:
                 await utils.edit_message_throttled(status_msg, "❌ **Download failed.** Check URL or torrent validity.", last_edit_state)
@@ -306,7 +320,8 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 last_edit_state
             )
         else:
-            if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
+            job = await utils.get_active_job(job_id)
+            if job and job.get("cancelled"):
                 await utils.edit_message_throttled(status_msg, "❌ **Job cancelled by user.** Local files cleaned up.", last_edit_state)
             else:
                 await utils.edit_message_throttled(status_msg, "❌ **Upload to Google Drive failed.**", last_edit_state)

@@ -45,12 +45,23 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
     metadata_downloading = False
     
     # Store process handle and initialize phase
-    if job_id in utils.active_jobs:
-        utils.active_jobs[job_id]["process"] = process
-        utils.active_jobs[job_id]["phase"] = "Downloading"
+    if await utils.has_active_job(job_id):
+        await utils.update_active_job(job_id, {"process": process, "phase": "Downloading"})
         
-    assert process.stdout is not None
+    if process.stdout is None:
+        raise RuntimeError("stdout pipe not available")
+        
     while True:
+        # Check if job was cancelled
+        job = await utils.get_active_job(job_id)
+        if job and job.get("cancelled"):
+            logger.info(f"Cancellation detected for job {job_id} inside aria2 loop. Terminating process.")
+            try:
+                process.terminate()
+            except Exception:
+                pass
+            break
+            
         line_bytes = await process.stdout.readline()
         if not line_bytes:
             break
@@ -68,8 +79,8 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
             eta = groups.get("eta") or "N/A"
             
             # Update global state
-            if job_id in utils.active_jobs:
-                utils.active_jobs[job_id].update({
+            if await utils.has_active_job(job_id):
+                await utils.update_active_job(job_id, {
                     "percent": percent,
                     "speed": f"{speed}/s",
                     "eta": eta,
@@ -90,8 +101,8 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
             # Handle metadata downloading phase
             if not metadata_downloading:
                 metadata_downloading = True
-                if job_id in utils.active_jobs:
-                    utils.active_jobs[job_id].update({
+                if await utils.has_active_job(job_id):
+                    await utils.update_active_job(job_id, {
                         "percent": 0,
                         "speed": "0 B/s",
                         "eta": "N/A",

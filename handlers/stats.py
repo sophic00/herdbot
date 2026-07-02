@@ -97,8 +97,9 @@ async def status_handler(event):
         await event.respond("❌ You are not authorized to use this bot.")
         return
 
-    running_jobs = {k: v for k, v in utils.active_jobs.items() if v.get("phase") != "Queued"}
-    queued_jobs = {k: v for k, v in utils.active_jobs.items() if v.get("phase") == "Queued"}
+    active_jobs_snapshot = await utils.get_active_jobs_snapshot()
+    running_jobs = {k: v for k, v in active_jobs_snapshot.items() if v.get("phase") != "Queued"}
+    queued_jobs = {k: v for k, v in active_jobs_snapshot.items() if v.get("phase") == "Queued"}
 
     if not running_jobs and not queued_jobs:
         await event.respond("ℹ️ **No active or queued tasks running.**", parse_mode="markdown")
@@ -123,7 +124,8 @@ async def status_handler(event):
             
     if queued_jobs:
         text += "💤 **Queued Jobs:**\n\n"
-        for idx, q_job in enumerate(utils.job_queue, start=1):
+        queue_snapshot = await utils.get_job_queue_snapshot()
+        for idx, q_job in enumerate(queue_snapshot, start=1):
             q_id = f"{q_job['chat_id']}_{q_job['message_id']}"
             if q_id in queued_jobs:
                 job = queued_jobs[q_id]
