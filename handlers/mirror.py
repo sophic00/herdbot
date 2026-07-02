@@ -9,6 +9,7 @@ import urllib.parse
 
 from telethon import Button
 
+import bencode
 import config
 import utils
 from downloaders.aria2 import run_aria2_download
@@ -50,6 +51,60 @@ def get_dir_size(path: str) -> int:
             except OSError:
                 pass
     return total
+
+def prune_unselected_files(job_dir: str, torrent_path: str, selected_indexes: list[int]):
+    """Delete unselected placeholder files and empty directories in job_dir."""
+    try:
+        with open(torrent_path, 'rb') as f:
+            data = f.read()
+        torrent = bencode.bdecode(data)
+        if not isinstance(torrent, dict):
+            return
+        info = torrent.get('info', {})
+        if not isinstance(info, dict):
+            return
+            
+        root_name = info.get('name', b'').decode('utf-8', errors='ignore')
+        
+        selected_paths = set()
+        if 'files' in info:
+            # Multi-file torrent
+            for idx, file_info in enumerate(info['files'], start=1):
+                if idx in selected_indexes:
+                    path_components = [p.decode('utf-8', errors='ignore') for p in file_info.get('path', [])]
+                    rel_path = os.path.join(root_name, *path_components)
+                    selected_paths.add(os.path.normpath(rel_path))
+        else:
+            # Single-file torrent
+            if 1 in selected_indexes:
+                selected_paths.add(os.path.normpath(root_name))
+                
+        # Walk and delete unselected files
+        for root, dirs, files in os.walk(job_dir, topdown=False):
+            for file in files:
+                abs_path = os.path.join(root, file)
+                rel_path = os.path.relpath(abs_path, job_dir)
+                norm_rel = os.path.normpath(rel_path)
+                
+                if file.endswith(".aria2"):
+                    continue
+                    
+                if norm_rel not in selected_paths:
+                    try:
+                        os.remove(abs_path)
+                    except Exception:
+                        pass
+            
+            # Delete empty directories
+            for d in dirs:
+                dir_path = os.path.join(root, d)
+                try:
+                    if not os.listdir(dir_path):
+                        os.rmdir(dir_path)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Error pruning unselected torrent files: {e}")
 
 async def update_queue_positions(client):
     """Update the queue position messages for all remaining queued jobs."""
@@ -254,6 +309,11 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 await utils.edit_message_throttled(status_msg, "❌ **Download failed.** Check URL or torrent validity.", last_edit_state)
             return
             
+        # Prune unselected files for selective torrent download (Issue 12 / Moderate)
+        if selected_indexes is not None and torrent_path:
+            await utils.edit_message_throttled(status_msg, "🧹 **Pruning unselected placeholder files...**", last_edit_state)
+            await asyncio.to_thread(prune_unselected_files, job_dir, torrent_path, selected_indexes)
+
         # Clean up any leftover .aria2 control files before checking folder contents or uploading
         def cleanup_aria2_sync():
             for root_dir, _, files in os.walk(job_dir):
