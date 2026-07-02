@@ -65,11 +65,25 @@ async def stats_handler(event):
         except Exception:
             pass
 
+    # Bot Uptime & Data Traffic Stats
+    uptime_str = utils.get_uptime_string()
+    total_dl, total_ul = utils.get_total_stats()
+    total_dl_str = utils.format_size(total_dl)
+    total_ul_str = utils.format_size(total_ul)
+    
+    bot_info = (
+        f"🤖 *Bot Uptime & Traffic:*\n"
+        f"🔸 Uptime: `{uptime_str}`\n"
+        f"🔸 Total Downloaded: `{total_dl_str}`\n"
+        f"🔸 Total Uploaded: `{total_ul_str}`"
+    )
+
     stats_text = (
         "⚙️ *Server Statistics:*\n\n"
         f"{disk_info}\n\n"
         f"{mem_info}\n\n"
-        f"{load_info}"
+        f"{load_info}\n\n"
+        f"{bot_info}"
     )
     await event.respond(stats_text, parse_mode="markdown")
 
