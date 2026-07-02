@@ -1,8 +1,10 @@
 import asyncio
+import ipaddress
 import logging
 import os
 import re
 import shutil
+import socket
 import urllib.parse
 
 from telethon import Button
@@ -13,6 +15,31 @@ from downloaders.aria2 import run_aria2_download
 from downloaders.rclone import run_rclone_upload
 
 logger = logging.getLogger(__name__)
+
+def is_safe_url(url: str) -> bool:
+    """Validate that the target URL scheme is strictly http, https or magnet, and does not point to local/private IPs."""
+    if url.startswith("magnet:"):
+        return True
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+            
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+            
+        try:
+            ip = socket.gethostbyname(hostname)
+            ip_obj = ipaddress.ip_address(ip)
+            if ip_obj.is_private or ip_obj.is_loopback:
+                return False
+        except Exception:
+            pass
+            
+        return True
+    except Exception:
+        return False
 
 async def update_queue_positions(client):
     """Update the queue position messages for all remaining queued jobs."""
@@ -335,7 +362,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
     except Exception as e:
         logger.error(f"Error handling job {job_id}: {e}", exc_info=True)
         try:
-            await utils.edit_message_throttled(status_msg, f"❌ **An error occurred:** `{str(e)}`", last_edit_state)
+            await utils.edit_message_throttled(status_msg, "❌ **An error occurred while processing your request.** Please check the logs for details.", last_edit_state)
         except Exception:
             pass
     finally:
@@ -385,7 +412,7 @@ async def mirror_handler(event):
         text_parts = message.text.strip().split(maxsplit=1)
         if len(text_parts) > 1:
             potential_target = text_parts[1].strip()
-            if potential_target.startswith("http://") or potential_target.startswith("https://") or potential_target.startswith("magnet:"):
+            if is_safe_url(potential_target):
                 target = potential_target
         
         # If no target found in text, check if it's a reply
@@ -405,7 +432,7 @@ async def mirror_handler(event):
                     target = reply_msg.voice
                 elif reply_msg.text:
                     text = reply_msg.text.strip()
-                    if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
+                    if is_safe_url(text):
                         target = text
                         
         if not target:
@@ -426,12 +453,13 @@ async def mirror_handler(event):
             target = message.voice
         elif message.text:
             text = message.text.strip()
-            if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
+            if is_safe_url(text):
                 target = text
                 
         if not target:
             if message.text and not message.text.startswith("/"):
-                await event.respond("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
+                if not event.is_group:
+                    await event.respond("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
             return
 
     # Check if it's a torrent or magnet link
@@ -446,14 +474,14 @@ async def mirror_handler(event):
             await event.client.download_media(target, file=temp_torrent_path)
             
         # Register in selection_sessions
-        utils.selection_sessions[job_id] = {
+        await utils.set_selection_session(job_id, {
             "target": target,
             "is_torrent_file": is_torrent_file,
             "torrent_path": temp_torrent_path,
             "chat_id": event.chat_id,
             "message_id": message.id,
             "zip_content": zip_content
-        }
+        })
         
         # Send prompt
         buttons = [
