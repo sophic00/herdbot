@@ -23,23 +23,23 @@ async def stats_handler(event):
         disk_percent = int((used / total) * 100)
         disk_bar = utils.make_progress_bar(disk_percent)
         disk_info = (
-            f"💾 *Disk Space (Download volume):*\n"
+            f"💾 **Disk Space (Download volume):**\n"
             f"`[{disk_bar}] {disk_percent}%`\n"
             f"🔸 Used: `{disk_used_str}` of `{disk_total_str}`\n"
             f"🔸 Free: `{disk_free_str}`"
         )
     except Exception as e:
-        disk_info = f"💾 *Disk Space:* Error retrieving stats: `{e}`"
+        disk_info = f"💾 **Disk Space:** Error retrieving stats: `{e}`"
 
     # CPU load average
     try:
         load1, load5, load15 = os.getloadavg()
-        load_info = f"📊 *System Load (1m, 5m, 15m):* `{load1:.2f}, {load5:.2f}, {load15:.2f}`"
+        load_info = f"📊 **System Load (1m, 5m, 15m):** `{load1:.2f}, {load5:.2f}, {load15:.2f}`"
     except Exception:
-        load_info = "📊 *System Load:* N/A"
+        load_info = "📊 **System Load:** N/A"
 
     # RAM Memory Info
-    mem_info = "🧠 *RAM Memory:* N/A"
+    mem_info = "🧠 **RAM Memory:** N/A"
     if os.path.exists("/proc/meminfo"):
         try:
             with open("/proc/meminfo") as f:
@@ -58,7 +58,7 @@ async def stats_handler(event):
                 mem_percent = int((mem_used / mem_total) * 100)
                 mem_bar = utils.make_progress_bar(mem_percent)
                 mem_info = (
-                    f"🧠 *RAM Memory Usage:*\n"
+                    f"🧠 **RAM Memory Usage:**\n"
                     f"`[{mem_bar}] {mem_percent}%`\n"
                     f"🔸 Used: `{used_gb:.1f} GB` of `{total_gb:.1f} GB`"
                 )
@@ -72,20 +72,21 @@ async def stats_handler(event):
     total_ul_str = utils.format_size(total_ul)
     
     bot_info = (
-        f"🤖 *Bot Uptime & Traffic:*\n"
+        f"🤖 **Bot Uptime & Traffic:**\n"
         f"🔸 Uptime: `{uptime_str}`\n"
         f"🔸 Total Downloaded: `{total_dl_str}`\n"
         f"🔸 Total Uploaded: `{total_ul_str}`"
     )
 
     stats_text = (
-        "⚙️ *Server Statistics:*\n\n"
+        "⚙️ **Server Statistics:**\n\n"
         f"{disk_info}\n\n"
         f"{mem_info}\n\n"
         f"{load_info}\n\n"
         f"{bot_info}"
     )
     await event.respond(stats_text, parse_mode="markdown")
+
 
 async def status_handler(event):
     """Handler for the /status command showing running tasks."""
@@ -100,39 +101,38 @@ async def status_handler(event):
     queued_jobs = {k: v for k, v in utils.active_jobs.items() if v.get("phase") == "Queued"}
 
     if not running_jobs and not queued_jobs:
-        await event.respond("ℹ️ *No active or queued tasks running.*", parse_mode="markdown")
+        await event.respond("ℹ️ **No active or queued tasks running.**", parse_mode="markdown")
         return
 
     text = ""
     if running_jobs:
-        text += "⏳ *Active Downloader Jobs:*\n\n"
+        text += "⏳ **Active Downloader Jobs:**\n\n"
         for job_id, job in running_jobs.items():
             percent = job.get("percent", 0)
             bar = utils.make_progress_bar(percent)
             text += (
-                f"📂 *Name:* `{job.get('name')}`\n"
-                f"🆔 *Job ID:* `{job_id}`\n"
-                f"👤 *Started By:* {job.get('user')}\n"
-                f"⚡ *Phase:* `{job.get('phase', 'Initializing')}`\n"
+                f"📂 **Name:** `{job.get('name')}`\n"
+                f"🆔 **Job ID:** `{job_id}`\n"
+                f"👤 **Started By:** {job.get('user')}\n"
+                f"⚡ **Phase:** `{job.get('phase', 'Initializing')}`\n"
                 f"`[{bar}] {percent}%`\n"
-                f"🚀 *Speed:* `{job.get('speed', '0 B/s')}` | *ETA:* `{job.get('eta', 'N/A')}`\n"
+                f"🚀 **Speed:** `{job.get('speed', '0 B/s')}` | **ETA:** `{job.get('eta', 'N/A')}`\n"
                 f"To cancel, send: `/cancel {job_id}`\n"
                 f"─────────────────\n\n"
             )
             
     if queued_jobs:
-        text += "💤 *Queued Jobs:*\n\n"
+        text += "💤 **Queued Jobs:**\n\n"
         for idx, q_job in enumerate(utils.job_queue, start=1):
             q_id = f"{q_job['chat_id']}_{q_job['message_id']}"
             if q_id in queued_jobs:
                 job = queued_jobs[q_id]
                 text += (
-                    f"📂 *Name:* `{job.get('name')}`\n"
-                    f"🆔 *Job ID:* `{q_id}`\n"
-                    f"👤 *Started By:* {job.get('user')}\n"
-                    f"🔢 *Queue Position:* `#{idx}`\n"
+                    f"📂 **Name:** `{job.get('name')}`\n"
+                    f"🆔 **Job ID:** `{q_id}`\n"
+                    f"👤 **Started By:** {job.get('user')}\n"
+                    f"🔢 **Queue Position:** `#{idx}`\n"
                     f"To cancel, send: `/cancel {q_id}`\n"
                     f"─────────────────\n\n"
                 )
-        
     await event.respond(text, parse_mode="markdown")

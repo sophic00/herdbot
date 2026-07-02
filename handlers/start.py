@@ -34,14 +34,14 @@ async def help_handler(event):
         return
 
     help_text = (
-        "💡 *HerdBot Help Guide*\n\n"
+        "💡 **HerdBot Help Guide**\n\n"
         "How to download and upload files:\n"
-        "1. *Direct Link:* Paste any direct HTTP/HTTPS download link.\n"
-        "2. *Magnet Link:* Paste any torrent magnet link starting with `magnet:?`.\n"
-        "3. *Torrent File:* Upload a `.torrent` file directly as a document.\n"
-        "4. *Telegram Files:* Upload any media file (video, document, music, etc.) directly to the bot.\n\n"
+        "1. **Direct Link:** Paste any direct HTTP/HTTPS download link.\n"
+        "2. **Magnet Link:** Paste any torrent magnet link starting with `magnet:?`.\n"
+        "3. **Torrent File:** Upload a `.torrent` file directly as a document.\n"
+        "4. **Telegram Files:** Upload any media file (video, document, music, etc.) directly to the bot.\n\n"
         "All downloads are saved temporarily, uploaded recursively to Google Drive, and then deleted from the server storage.\n\n"
-        "🔧 *Available Commands:*\n"
+        "🔧 **Available Commands:**\n"
         "• `/start` - Start the bot\n"
         "• `/help` - Show this help menu\n"
         "• `/status` - Check live status of all active download/upload tasks\n"

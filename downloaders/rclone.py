@@ -70,10 +70,10 @@ async def run_rclone_upload(source_dir: str, job_id: str, status_msg, last_edit_
                 
             bar = utils.make_progress_bar(percent)
             progress_text = (
-                f"📤 *Uploading to Google Drive...*\n"
+                f"📤 **Uploading to Google Drive...**\n"
                 f"`[{bar}] {percent}%`\n"
-                f"🔸 *Uploaded:* {uploaded} of {total}\n"
-                f"🔸 *Speed:* {speed} | *ETA:* {eta}\n\n"
+                f"🔸 **Uploaded:** {uploaded} of {total}\n"
+                f"🔸 **Speed:** {speed} | **ETA:** {eta}\n\n"
                 f"To cancel, send: `/cancel {job_id}`"
             )
             await utils.edit_message_throttled(status_msg, progress_text, last_edit_state)

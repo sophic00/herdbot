@@ -78,10 +78,10 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
                 
             bar = utils.make_progress_bar(percent)
             progress_text = (
-                f"📥 *Downloading...*\n"
+                f"📥 **Downloading...**\n"
                 f"`[{bar}] {percent}%`\n"
-                f"🔸 *Downloaded:* {downloaded} of {total}\n"
-                f"🔸 *Speed:* {speed}/s | *ETA:* {eta}\n\n"
+                f"🔸 **Downloaded:** {downloaded} of {total}\n"
+                f"🔸 **Speed:** {speed}/s | **ETA:** {eta}\n\n"
                 f"To cancel, send: `/cancel {job_id}`"
             )
             await utils.edit_message_throttled(status_msg, progress_text, last_edit_state)
@@ -99,7 +99,7 @@ async def run_aria2_download(target: str, job_dir: str, job_id: str, status_msg,
                     })
                 await utils.edit_message_throttled(
                     status_msg, 
-                    f"📥 *Connecting to peers / downloading metadata...*\n\nTo cancel, send: `/cancel {job_id}`", 
+                    f"📥 **Connecting to peers / downloading metadata...**\n\nTo cancel, send: `/cancel {job_id}`", 
                     last_edit_state
                 )
                 

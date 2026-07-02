@@ -101,7 +101,7 @@ async def show_directory_view(client, chat_id, msg_id, job_id, dir_id):
     # Render message text
     path_str = f"/{'/'.join(current_path)}" if current_path else "/"
     text = (
-        f"📂 *Browsing:* `{root_name}{path_str}`\n\n"
+        f"📂 **Browsing:** `{root_name}{path_str}`\n\n"
         f"Please select the files/folders you want to download. "
         f"Toggle files with checkboxes or enter folders to explore."
     )
@@ -114,7 +114,7 @@ async def prefetch_magnet_metadata(client, chat_id, msg_id, job_id, magnet_link)
     os.makedirs(job_dir, exist_ok=True)
     
     # Update status message
-    await client.edit_message(chat_id, msg_id, "⏳ *Fetching torrent metadata from peers... (This may take 10-30 seconds)*")
+    await client.edit_message(chat_id, msg_id, "⏳ **Fetching torrent metadata from peers... (This may take 10-30 seconds)**")
     
     cmd = [
         "aria2c",
@@ -199,7 +199,7 @@ async def select_callback_handler(event):
             await event.answer("❌ Session expired.", alert=True)
             return
             
-        await client.edit_message(chat_id, msg_id, "⏳ *Initializing full download...*")
+        await client.edit_message(chat_id, msg_id, "⏳ **Initializing full download...**")
         asyncio.create_task(start_mirror_job(client, chat_id, msg_id, target, is_torrent_file, selected_indexes=None, zip_content=zip_content))
         await event.answer()
         
@@ -217,7 +217,7 @@ async def select_callback_handler(event):
             await event.answer("Fetching metadata...", alert=False)
             torrent_path = await prefetch_magnet_metadata(client, chat_id, msg_id, job_id, target)
             if not torrent_path:
-                await client.edit_message(chat_id, msg_id, "❌ *Failed to retrieve torrent metadata.* Check tracker/peer availability.")
+                await client.edit_message(chat_id, msg_id, "❌ **Failed to retrieve torrent metadata.** Check tracker/peer availability.")
                 utils.selection_sessions.pop(job_id, None)
                 return
             session["torrent_path"] = torrent_path
@@ -239,7 +239,7 @@ async def select_callback_handler(event):
             await show_directory_view(client, chat_id, msg_id, job_id, 0)
         except Exception as e:
             logger.error(f"Failed to parse torrent files for job {job_id}: {e}")
-            await client.edit_message(chat_id, msg_id, f"❌ *Failed to parse torrent file:* `{e}`")
+            await client.edit_message(chat_id, msg_id, f"❌ **Failed to parse torrent file:** `{e}`")
             utils.selection_sessions.pop(job_id, None)
             
     elif action == "dir":
@@ -294,7 +294,7 @@ async def select_callback_handler(event):
             return
             
         await event.answer("Starting download...", alert=False)
-        await client.edit_message(chat_id, msg_id, "⏳ *Initializing selective download...*")
+        await client.edit_message(chat_id, msg_id, "⏳ **Initializing selective download...**")
         
         zip_content = session.get("zip_content", False)
         

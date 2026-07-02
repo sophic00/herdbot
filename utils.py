@@ -152,9 +152,9 @@ async def tg_progress_callback(received: int, total: int, status_msg, last_edit_
     tot_str = format_size(total)
     
     progress_text = (
-        f"📥 *Downloading file from Telegram...*\n"
+        f"📥 **Downloading file from Telegram...**\n"
         f"`[{bar}] {percent}%`\n"
-        f"🔸 *Downloaded:* {rec_str} of {tot_str}\n\n"
+        f"🔸 **Downloaded:** {rec_str} of {tot_str}\n\n"
         f"To cancel, send: `/cancel {job_id}`"
     )
     await edit_message_throttled(status_msg, progress_text, last_edit_state)

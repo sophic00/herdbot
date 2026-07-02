@@ -22,7 +22,7 @@ async def process_next_in_queue(client):
         # Update the queue position messages for all remaining queued jobs
         for idx, queued_job in enumerate(utils.job_queue, start=1):
             q_id = f"{queued_job['chat_id']}_{queued_job['message_id']}"
-            new_text = f"⏳ *Job added to queue.* Position: `#{idx}`\n\nTo cancel, send: `/cancel {q_id}`"
+            new_text = f"⏳ **Job added to queue.** Position: `#{idx}`\n\nTo cancel, send: `/cancel {q_id}`"
             try:
                 await utils.edit_message_throttled(queued_job["status_msg"], new_text, {"time": 0, "text": ""})
             except Exception:
@@ -111,7 +111,7 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
         utils.job_queue.append(job_context)
         pos = len(utils.job_queue)
         
-        queue_text = f"⏳ *Job added to queue.* Position: `#{pos}`\n\nTo cancel, send: `/cancel {job_id}`"
+        queue_text = f"⏳ **Job added to queue.** Position: `#{pos}`\n\nTo cancel, send: `/cancel {job_id}`"
         
         if status_msg:
             await utils.edit_message_throttled(status_msg, queue_text, {"time": 0, "text": ""})
@@ -146,12 +146,12 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         }
         
     if not status_msg:
-        status_msg = await client.send_message(chat_id, f"⏳ *Initializing job...*\n\nTo cancel, send: `/cancel {job_id}`")
+        status_msg = await client.send_message(chat_id, f"⏳ **Initializing job...**\n\nTo cancel, send: `/cancel {job_id}`")
     else:
         # Edit the status message if it was previously queued
         await utils.edit_message_throttled(
             status_msg, 
-            f"⏳ *Initializing job...*\n\nTo cancel, send: `/cancel {job_id}`", 
+            f"⏳ **Initializing job...**\n\nTo cancel, send: `/cancel {job_id}`", 
             {"time": 0, "text": ""}
         )
         
@@ -168,7 +168,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         elif is_torrent_file:
             # If torrent_path is not already provided, download it now
             if not torrent_path:
-                await utils.edit_message_throttled(status_msg, f"⏳ *Downloading .torrent file from Telegram...*\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
+                await utils.edit_message_throttled(status_msg, f"⏳ **Downloading .torrent file from Telegram...**\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
                 torrent_path = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.torrent")
                 
                 last_edit_state["time"] = 0
@@ -198,9 +198,9 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             
         if not success:
             if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
-                await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+                await utils.edit_message_throttled(status_msg, "❌ **Job cancelled by user.** Local files cleaned up.", last_edit_state)
             else:
-                await utils.edit_message_throttled(status_msg, "❌ *Download failed.* Check URL or torrent validity.", last_edit_state)
+                await utils.edit_message_throttled(status_msg, "❌ **Download failed.** Check URL or torrent validity.", last_edit_state)
             return
             
         # Clean up any leftover .aria2 control files before checking folder contents or uploading
@@ -215,7 +215,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         # Check if downloaded anything
         downloaded_contents = os.listdir(job_dir)
         if not downloaded_contents:
-            await utils.edit_message_throttled(status_msg, "❌ *Download completed, but no files found.*", last_edit_state)
+            await utils.edit_message_throttled(status_msg, "❌ **Download completed, but no files found.**", last_edit_state)
             return
             
         # Record download stats
@@ -230,7 +230,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             
         # Zipping phase
         if zip_content:
-            await utils.edit_message_throttled(status_msg, "🤐 *Zipping downloaded contents...*", last_edit_state)
+            await utils.edit_message_throttled(status_msg, "🤐 **Zipping downloaded contents...**", last_edit_state)
             
             zip_filename = f"{job_name}.zip"
             temp_zip_path = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.zip")
@@ -258,7 +258,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                 downloaded_contents = [zip_filename]
             except Exception as e:
                 logger.error(f"Zipping failed: {e}", exc_info=True)
-                await utils.edit_message_throttled(status_msg, f"⚠️ *Zipping failed:* `{e}`. Proceeding to upload raw files.", last_edit_state)
+                await utils.edit_message_throttled(status_msg, f"⚠️ **Zipping failed:** `{e}`. Proceeding to upload raw files.", last_edit_state)
                 # Cleanup temp zip if it exists
                 if os.path.exists(temp_zip_path):
                     try:
@@ -268,7 +268,7 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             
         # Upload phase
         last_edit_state["time"] = 0
-        await utils.edit_message_throttled(status_msg, f"⏳ *Preparing to upload to Google Drive...*\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
+        await utils.edit_message_throttled(status_msg, f"⏳ **Preparing to upload to Google Drive...**\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
         
         # Calculate size before move/upload, as rclone move will delete files from job_dir
         upload_size = 0
@@ -294,12 +294,12 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                     else:
                         path_part = config.RCLONE_DEST_DIR
                 index_url = f"{index_base}/{urllib.parse.quote(path_part)}"
-                link_text = f"🔗 *Index Link:* [Click Here]({index_url})\n"
+                link_text = f"🔗 **Index Link:** [Click Here]({index_url})\n"
 
             dest_folder = f"{config.RCLONE_DEST_DIR}/{job_id}" if config.RCLONE_ISOLATE_JOBS else config.RCLONE_DEST_DIR
             await utils.edit_message_throttled(
                 status_msg, 
-                f"✅ *Upload complete!*\n\n"
+                f"✅ **Upload complete!**\n\n"
                 f"📂 Folder: `{dest_folder}`\n"
                 f"{link_text}"
                 f"🧹 Local files cleaned up successfully.",
@@ -307,20 +307,20 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
             )
         else:
             if job_id in utils.active_jobs and utils.active_jobs[job_id].get("cancelled"):
-                await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+                await utils.edit_message_throttled(status_msg, "❌ **Job cancelled by user.** Local files cleaned up.", last_edit_state)
             else:
-                await utils.edit_message_throttled(status_msg, "❌ *Upload to Google Drive failed.*", last_edit_state)
+                await utils.edit_message_throttled(status_msg, "❌ **Upload to Google Drive failed.**", last_edit_state)
                 
     except asyncio.CancelledError:
         logger.info(f"Job {job_id} was cancelled by user.")
         try:
-            await utils.edit_message_throttled(status_msg, "❌ *Job cancelled by user.* Local files cleaned up.", last_edit_state)
+            await utils.edit_message_throttled(status_msg, "❌ **Job cancelled by user.** Local files cleaned up.", last_edit_state)
         except Exception:
             pass
     except Exception as e:
         logger.error(f"Error handling job {job_id}: {e}", exc_info=True)
         try:
-            await utils.edit_message_throttled(status_msg, f"❌ *An error occurred:* `{str(e)}`", last_edit_state)
+            await utils.edit_message_throttled(status_msg, f"❌ **An error occurred:** `{str(e)}`", last_edit_state)
         except Exception:
             pass
     finally:
@@ -445,7 +445,7 @@ async def mirror_handler(event):
             ]
         ]
         await event.respond(
-            "⚡ *Torrent/Magnet detected!*\nChoose how you want to download:",
+            "⚡ **Torrent/Magnet detected!**\nChoose how you want to download:",
             buttons=buttons,
             parse_mode="Markdown"
         )
