@@ -328,9 +328,12 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
         if os.path.exists(job_dir):
             shutil.rmtree(job_dir, ignore_errors=True)
         if torrent_path and os.path.exists(torrent_path):
-            os.remove(torrent_path)
+            try:
+                os.remove(torrent_path)
+            except Exception as e:
+                logger.warning(f"Failed to remove torrent path {torrent_path}: {e}")
             
-        utils.active_jobs.pop(job_id, None)
+        await utils.pop_active_job(job_id)
         # Dequeue the next task
         await process_next_in_queue(client)
 
