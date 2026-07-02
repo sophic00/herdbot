@@ -40,11 +40,12 @@ async def process_next_in_queue(client):
                 torrent_path=next_job["torrent_path"],
                 status_msg=next_job["status_msg"],
                 user_display=next_job["user_display"],
-                job_name=next_job["job_name"]
+                job_name=next_job["job_name"],
+                zip_content=next_job.get("zip_content", False)
             )
         )
 
-async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file, selected_indexes=None, torrent_path=None, status_msg=None):
+async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file, selected_indexes=None, torrent_path=None, status_msg=None, zip_content=False):
     """
     Checks concurrency limits and either executes the job immediately or queues it.
     """
@@ -104,7 +105,8 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
             "torrent_path": torrent_path,
             "user_display": user_display,
             "job_name": job_name,
-            "status_msg": status_msg
+            "status_msg": status_msg,
+            "zip_content": zip_content
         }
         utils.job_queue.append(job_context)
         pos = len(utils.job_queue)
@@ -121,11 +123,11 @@ async def start_mirror_job(client, chat_id, message_id, target, is_torrent_file,
         asyncio.create_task(
             execute_mirror_job(
                 client, chat_id, message_id, target, is_torrent_file,
-                selected_indexes, torrent_path, status_msg, user_display, job_name
+                selected_indexes, torrent_path, status_msg, user_display, job_name, zip_content
             )
         )
 
-async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_file, selected_indexes, torrent_path, status_msg, user_display, job_name):
+async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_file, selected_indexes, torrent_path, status_msg, user_display, job_name, zip_content=False):
     """The actual download, upload, and cleanup routine."""
     job_id = f"{chat_id}_{message_id}"
     job_dir = os.path.join(config.DOWNLOAD_DIR, f"job_{job_id}")
@@ -226,6 +228,44 @@ async def execute_mirror_job(client, chat_id, message_id, target, is_torrent_fil
                     pass
         utils.add_download_stats(downloaded_size)
             
+        # Zipping phase
+        if zip_content:
+            await utils.edit_message_throttled(status_msg, "🤐 *Zipping downloaded contents...*", last_edit_state)
+            
+            zip_filename = f"{job_name}.zip"
+            temp_zip_path = os.path.join(config.DOWNLOAD_DIR, f"temp_{job_id}.zip")
+            
+            try:
+                # Offload zipping to executor to avoid blocking the event loop
+                loop = asyncio.get_running_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: shutil.make_archive(
+                        temp_zip_path[:-4],  # shutil.make_archive appends .zip automatically
+                        'zip',
+                        job_dir
+                    )
+                )
+                
+                # Delete all local downloaded files in the folder
+                shutil.rmtree(job_dir, ignore_errors=True)
+                os.makedirs(job_dir, exist_ok=True)
+                
+                # Move the newly created zip file into job_dir
+                shutil.move(temp_zip_path, os.path.join(job_dir, zip_filename))
+                
+                # Update downloaded contents array so that GD Index link matches the zip file
+                downloaded_contents = [zip_filename]
+            except Exception as e:
+                logger.error(f"Zipping failed: {e}", exc_info=True)
+                await utils.edit_message_throttled(status_msg, f"⚠️ *Zipping failed:* `{e}`. Proceeding to upload raw files.", last_edit_state)
+                # Cleanup temp zip if it exists
+                if os.path.exists(temp_zip_path):
+                    try:
+                        os.remove(temp_zip_path)
+                    except Exception:
+                        pass
+            
         # Upload phase
         last_edit_state["time"] = 0
         await utils.edit_message_throttled(status_msg, f"⏳ *Preparing to upload to Google Drive...*\n\nTo cancel, send: `/cancel {job_id}`", last_edit_state)
@@ -306,35 +346,75 @@ async def mirror_handler(event):
 
     message = event.message
     
-    # Ignore messages starting with slash (command routing)
+    # Check if command is /zip
+    zip_content = False
+    is_zip_cmd = False
+    if message.text and message.text.strip().startswith("/zip"):
+        is_zip_cmd = True
+        zip_content = True
+    
+    # Ignore messages starting with slash (command routing), unless it is /zip
     if message.text and message.text.strip().startswith("/"):
-        return
+        if not is_zip_cmd:
+            return
 
     job_id = f"{event.chat_id}_{message.id}"
     
     target = None
     is_torrent_file = False
-    filename = utils.get_filename(message)
-    
-    if message.document:
-        if filename and filename.lower().endswith(".torrent"):
-            is_torrent_file = True
-        target = message.document
-    elif message.video:
-        target = message.video
-    elif message.audio:
-        target = message.audio
-    elif message.voice:
-        target = message.voice
-    elif message.text:
-        text = message.text.strip()
-        if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
-            target = text
-            
-    if not target:
-        if message.text and not message.text.startswith("/"):
-            await event.respond("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
-        return
+    if is_zip_cmd:
+        # Check if there is text after /zip
+        text_parts = message.text.strip().split(maxsplit=1)
+        if len(text_parts) > 1:
+            potential_target = text_parts[1].strip()
+            if potential_target.startswith("http://") or potential_target.startswith("https://") or potential_target.startswith("magnet:"):
+                target = potential_target
+        
+        # If no target found in text, check if it's a reply
+        if not target and message.is_reply:
+            reply_msg = await message.get_reply_message()
+            if reply_msg:
+                filename = utils.get_filename(reply_msg)
+                if reply_msg.document:
+                    if filename and filename.lower().endswith(".torrent"):
+                        is_torrent_file = True
+                    target = reply_msg.document
+                elif reply_msg.video:
+                    target = reply_msg.video
+                elif reply_msg.audio:
+                    target = reply_msg.audio
+                elif reply_msg.voice:
+                    target = reply_msg.voice
+                elif reply_msg.text:
+                    text = reply_msg.text.strip()
+                    if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
+                        target = text
+                        
+        if not target:
+            await event.respond("❌ Please provide a link with `/zip <link>` or reply to a downloadable message/file with `/zip`.")
+            return
+    else:
+        # Standard flow
+        filename = utils.get_filename(message)
+        if message.document:
+            if filename and filename.lower().endswith(".torrent"):
+                is_torrent_file = True
+            target = message.document
+        elif message.video:
+            target = message.video
+        elif message.audio:
+            target = message.audio
+        elif message.voice:
+            target = message.voice
+        elif message.text:
+            text = message.text.strip()
+            if text.startswith("http://") or text.startswith("https://") or text.startswith("magnet:"):
+                target = text
+                
+        if not target:
+            if message.text and not message.text.startswith("/"):
+                await event.respond("❌ Unsupported format. Please send a direct download link, magnet link, .torrent file, or a media file.")
+            return
 
     # Check if it's a torrent or magnet link
     is_magnet = isinstance(target, str) and target.startswith("magnet:")
@@ -353,7 +433,8 @@ async def mirror_handler(event):
             "is_torrent_file": is_torrent_file,
             "torrent_path": temp_torrent_path,
             "chat_id": event.chat_id,
-            "message_id": message.id
+            "message_id": message.id,
+            "zip_content": zip_content
         }
         
         # Send prompt
@@ -370,4 +451,4 @@ async def mirror_handler(event):
         )
     else:
         # Direct download link or normal media file (runs immediately)
-        await start_mirror_job(event.client, event.chat_id, message.id, target, is_torrent_file)
+        await start_mirror_job(event.client, event.chat_id, message.id, target, is_torrent_file, zip_content=zip_content)

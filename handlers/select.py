@@ -193,13 +193,14 @@ async def select_callback_handler(event):
         session = utils.selection_sessions.pop(job_id, None)
         target = session["target"] if session else None
         is_torrent_file = session["is_torrent_file"] if session else False
+        zip_content = session.get("zip_content", False) if session else False
         
         if not target:
             await event.answer("❌ Session expired.", alert=True)
             return
             
         await client.edit_message(chat_id, msg_id, "⏳ *Initializing full download...*")
-        asyncio.create_task(start_mirror_job(client, chat_id, msg_id, target, is_torrent_file, selected_indexes=None))
+        asyncio.create_task(start_mirror_job(client, chat_id, msg_id, target, is_torrent_file, selected_indexes=None, zip_content=zip_content))
         await event.answer()
         
     elif action == "browser_init":
@@ -295,6 +296,8 @@ async def select_callback_handler(event):
         await event.answer("Starting download...", alert=False)
         await client.edit_message(chat_id, msg_id, "⏳ *Initializing selective download...*")
         
+        zip_content = session.get("zip_content", False)
+        
         # Trigger download job with selected indexes
         asyncio.create_task(
             start_mirror_job(
@@ -304,6 +307,7 @@ async def select_callback_handler(event):
                 session["target"], 
                 session["is_torrent_file"], 
                 selected_indexes=selected_indexes,
-                torrent_path=session.get("torrent_path")
+                torrent_path=session.get("torrent_path"),
+                zip_content=zip_content
             )
         )

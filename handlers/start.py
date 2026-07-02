@@ -20,7 +20,8 @@ async def start_handler(event):
         f"• /start - Welcome message\n"
         f"• /help - Detailed instructions\n"
         f"• /status - Show currently running jobs\n"
-        f"• /stats - Show server performance & disk stats"
+        f"• /stats - Show server performance & disk stats\n"
+        f"• /zip - Reply to a file or use `/zip <link>` to upload as ZIP"
     )
     await event.respond(welcome_text)
 
@@ -44,6 +45,7 @@ async def help_handler(event):
         "• `/start` - Start the bot\n"
         "• `/help` - Show this help menu\n"
         "• `/status` - Check live status of all active download/upload tasks\n"
-        "• `/stats` - View server disk space usage and processor load info"
+        "• `/stats` - View server disk space usage and processor load info\n"
+        "• `/zip` - Zip content before uploading (usage: `/zip <link>` or reply to a file/message with `/zip`)"
     )
     await event.respond(help_text, parse_mode="markdown")
