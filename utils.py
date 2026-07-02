@@ -41,19 +41,98 @@ def save_stats(stats: dict):
 # Global cache for in-memory tracking
 _stats_cache = load_stats()
 
-def add_download_stats(size_bytes: int):
-    global _stats_cache
-    _stats_cache["total_downloaded"] += size_bytes
-    save_stats(_stats_cache)
+# Asyncio Locks for guarding shared mutable state
+active_jobs_lock = asyncio.Lock()
+job_queue_lock = asyncio.Lock()
+selection_sessions_lock = asyncio.Lock()
+stats_lock = asyncio.Lock()
 
-def add_upload_stats(size_bytes: int):
-    global _stats_cache
-    _stats_cache["total_uploaded"] += size_bytes
-    save_stats(_stats_cache)
+# Selection sessions registry
+selection_sessions = {}
 
-def get_total_stats() -> tuple[int, int]:
-    global _stats_cache
-    return _stats_cache["total_downloaded"], _stats_cache["total_uploaded"]
+# Queue registry for concurrency control
+job_queue = []
+
+# Shared Global Jobs registry
+active_jobs = {}
+
+async def add_download_stats(size_bytes: int):
+    async with stats_lock:
+        _stats_cache["total_downloaded"] += size_bytes
+        await asyncio.to_thread(save_stats, _stats_cache)
+
+async def add_upload_stats(size_bytes: int):
+    async with stats_lock:
+        _stats_cache["total_uploaded"] += size_bytes
+        await asyncio.to_thread(save_stats, _stats_cache)
+
+async def get_total_stats() -> tuple[int, int]:
+    async with stats_lock:
+        return _stats_cache["total_downloaded"], _stats_cache["total_uploaded"]
+
+# Active Jobs API
+async def set_active_job(job_id: str, job_data: dict):
+    async with active_jobs_lock:
+        active_jobs[job_id] = job_data
+
+async def get_active_job(job_id: str) -> dict | None:
+    async with active_jobs_lock:
+        return active_jobs.get(job_id)
+
+async def has_active_job(job_id: str) -> bool:
+    async with active_jobs_lock:
+        return job_id in active_jobs
+
+async def update_active_job(job_id: str, updates: dict):
+    async with active_jobs_lock:
+        if job_id in active_jobs:
+            active_jobs[job_id].update(updates)
+
+async def pop_active_job(job_id: str) -> dict | None:
+    async with active_jobs_lock:
+        return active_jobs.pop(job_id, None)
+
+async def get_active_jobs_snapshot() -> dict:
+    async with active_jobs_lock:
+        return {k: v.copy() for k, v in active_jobs.items()}
+
+# Job Queue API
+async def add_to_job_queue(job_context: dict):
+    async with job_queue_lock:
+        job_queue.append(job_context)
+
+async def pop_from_job_queue() -> dict | None:
+    async with job_queue_lock:
+        if job_queue:
+            return job_queue.pop(0)
+        return None
+
+async def remove_from_job_queue(job_id: str) -> bool:
+    async with job_queue_lock:
+        before = len(job_queue)
+        job_queue[:] = [q for q in job_queue if f"{q['chat_id']}_{q['message_id']}" != job_id]
+        return len(job_queue) < before
+
+async def get_job_queue_snapshot() -> list:
+    async with job_queue_lock:
+        return [q.copy() for q in job_queue]
+
+async def get_job_queue_length() -> int:
+    async with job_queue_lock:
+        return len(job_queue)
+
+# Selection Sessions API
+async def set_selection_session(job_id: str, session_data: dict):
+    async with selection_sessions_lock:
+        selection_sessions[job_id] = session_data
+
+async def get_selection_session(job_id: str) -> dict | None:
+    async with selection_sessions_lock:
+        return selection_sessions.get(job_id)
+
+async def pop_selection_session(job_id: str) -> dict | None:
+    async with selection_sessions_lock:
+        return selection_sessions.pop(job_id, None)
 
 def get_uptime_string() -> str:
     uptime_seconds = int(time.time() - bot_start_time)
@@ -72,17 +151,6 @@ def get_uptime_string() -> str:
     
     return " ".join(parts)
 
-# Selection sessions registry
-# Structure: { job_id: { "files": list, "current_dir": tuple, "dir_map": dict, "id_map": dict, "msg_id": int, ... } }
-selection_sessions = {}
-
-# Queue registry for concurrency control
-# List of dicts representing job execution contexts
-job_queue = []
-
-# Shared Global Jobs registry
-# Structure: { job_id: { "user": str, "name": str, "status": str, "percent": int, "speed": str, "eta": str, "phase": str } }
-active_jobs = {}
 
 def make_progress_bar(percent: int) -> str:
     """Generate a visual progress bar string."""
@@ -142,7 +210,8 @@ async def tg_progress_callback(received: int, total: int, status_msg, last_edit_
         return
         
     # Check if job was cancelled
-    if job_id in active_jobs and active_jobs[job_id].get("cancelled"):
+    job = await get_active_job(job_id)
+    if job and job.get("cancelled"):
         raise asyncio.CancelledError("Download cancelled by user")
         
     percent = int(received * 100 / total)
@@ -197,6 +266,8 @@ def parse_torrent_files(torrent_path: str) -> tuple[str, list[dict]]:
         
     return root_name, files_list
 
-def get_running_jobs_count() -> int:
+async def get_running_jobs_count() -> int:
     """Returns the number of active jobs currently running (not in 'Queued' phase)."""
-    return sum(1 for j in active_jobs.values() if j.get("phase") != "Queued")
+    async with active_jobs_lock:
+        return sum(1 for j in active_jobs.values() if j.get("phase") != "Queued")
+
