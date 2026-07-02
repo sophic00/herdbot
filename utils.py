@@ -1,11 +1,76 @@
 import asyncio
+import json
 import logging
+import os
 import time
 
 from telethon.tl.types import DocumentAttributeFilename
 
 import bencode
 import config
+
+# Bot start time for uptime tracking
+bot_start_time = time.time()
+
+# Stats file path
+STATS_FILE = os.path.join('session', 'stats.json')
+
+logger = logging.getLogger(__name__)
+
+def load_stats() -> dict:
+    if os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE) as f:
+                data = json.load(f)
+                return {
+                    "total_downloaded": data.get("total_downloaded", 0),
+                    "total_uploaded": data.get("total_uploaded", 0)
+                }
+        except Exception as e:
+            logger.error(f"Error loading stats file: {e}")
+    return {"total_downloaded": 0, "total_uploaded": 0}
+
+def save_stats(stats: dict):
+    try:
+        os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
+        with open(STATS_FILE, 'w') as f:
+            json.dump(stats, f)
+    except Exception as e:
+        logger.error(f"Error saving stats file: {e}")
+
+# Global cache for in-memory tracking
+_stats_cache = load_stats()
+
+def add_download_stats(size_bytes: int):
+    global _stats_cache
+    _stats_cache["total_downloaded"] += size_bytes
+    save_stats(_stats_cache)
+
+def add_upload_stats(size_bytes: int):
+    global _stats_cache
+    _stats_cache["total_uploaded"] += size_bytes
+    save_stats(_stats_cache)
+
+def get_total_stats() -> tuple[int, int]:
+    global _stats_cache
+    return _stats_cache["total_downloaded"], _stats_cache["total_uploaded"]
+
+def get_uptime_string() -> str:
+    uptime_seconds = int(time.time() - bot_start_time)
+    days, remainder = divmod(uptime_seconds, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    parts.append(f"{seconds}s")
+    
+    return " ".join(parts)
 
 # Selection sessions registry
 # Structure: { job_id: { "files": list, "current_dir": tuple, "dir_map": dict, "id_map": dict, "msg_id": int, ... } }
@@ -14,8 +79,6 @@ selection_sessions = {}
 # Queue registry for concurrency control
 # List of dicts representing job execution contexts
 job_queue = []
-
-logger = logging.getLogger(__name__)
 
 # Shared Global Jobs registry
 # Structure: { job_id: { "user": str, "name": str, "status": str, "percent": int, "speed": str, "eta": str, "phase": str } }
